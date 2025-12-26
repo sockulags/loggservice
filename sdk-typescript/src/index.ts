@@ -160,6 +160,14 @@ export class LoggplattformSDK {
 
   /**
    * Flush queued logs synchronously (blocking)
+   * 
+   * WARNING: This method uses deasync.loopWhile which blocks the Node.js event loop.
+   * This is an anti-pattern and can cause the entire application to freeze during flushing.
+   * This method is intended only for use during process shutdown to ensure logs are sent
+   * before the process exits. For normal operation, use the async flush() method instead.
+   * 
+   * Consider allowing the process to exit gracefully after a timeout instead of forcing
+   * synchronous behavior in production applications.
    */
   public flushSync(): void {
     if (this.logQueue.length === 0 || !this.apiKey) {

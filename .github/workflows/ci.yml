@@ -79,8 +79,7 @@ jobs:
       
       - name: Run ESLint
         working-directory: ./backend
-        run: eslint src/ --ext .js || true
-        continue-on-error: true
+        run: eslint src/ --ext .js
 
   docker-build:
     name: Build Docker Images

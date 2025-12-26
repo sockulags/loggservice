@@ -1,5 +1,9 @@
 const axios = require('axios');
 
+// Singleton pattern for process event handlers to prevent duplicate handlers
+let processHandlersRegistered = false;
+const sdkInstances = new Set();
+
 class LoggplattformSDK {
   constructor(options = {}) {
     this.apiUrl = options.apiUrl || process.env.LOGGPLATTFORM_API_URL || 'http://localhost:3000';
@@ -23,39 +27,47 @@ class LoggplattformSDK {
       this.flushTimer = setInterval(() => this.flush(), this.flushInterval);
     }
     
-    // Flush on process exit - use async handler
-    const shutdownHandler = async () => {
-      if (!this.shutdownInProgress) {
-        this.shutdownInProgress = true;
-        if (this.flushTimer) {
-          clearInterval(this.flushTimer);
-          this.flushTimer = undefined;
-        }
-        // Attempt to flush logs, but don't block shutdown
-        await this.flush().catch(err => {
-          if (process.env.LOGGPLATTFORM_DEBUG) {
-            console.error('Loggplattform SDK: Error flushing logs on shutdown:', err.message);
+    // Register this instance
+    sdkInstances.add(this);
+    
+    // Register process handlers only once (singleton pattern)
+    if (!processHandlersRegistered) {
+      processHandlersRegistered = true;
+      
+      // For SIGINT/SIGTERM, flush all instances then explicitly exit
+      const signalHandler = async () => {
+        // Flush all SDK instances
+        const flushPromises = Array.from(sdkInstances).map(instance => {
+          // Skip instances that are already shutting down
+          if (instance.shutdownInProgress) {
+            return Promise.resolve();
           }
+
+          instance.shutdownInProgress = true;
+          if (instance.flushTimer) {
+            clearInterval(instance.flushTimer);
+            instance.flushTimer = undefined;
+          }
+          return instance.flush().catch(err => {
+            if (process.env.LOGGPLATTFORM_DEBUG) {
+              console.error('Loggplattform SDK: Error flushing logs on shutdown:', err.message);
+            }
+          });
         });
-      }
-    };
-
-    // Use beforeExit for async cleanup (allows async operations)
-    process.on('beforeExit', async () => {
-      await shutdownHandler();
-    });
-
-    // For SIGINT/SIGTERM, try to flush but don't block indefinitely
-    const signalHandler = async () => {
-      await shutdownHandler();
-      // Give a short time for logs to send, then exit
-      setTimeout(() => {
+        
+        // Wait up to 2 seconds for flush to complete
+        await Promise.race([
+          Promise.all(flushPromises),
+          new Promise(resolve => setTimeout(resolve, 2000))
+        ]);
+        
+        // Explicitly exit after flush operations complete
         process.exit(0);
-      }, 2000); // 2 second grace period
-    };
+      };
 
-    process.on('SIGINT', signalHandler);
-    process.on('SIGTERM', signalHandler);
+      process.on('SIGINT', signalHandler);
+      process.on('SIGTERM', signalHandler);
+    }
   }
   
   _createLogEntry(level, message, context = {}) {
@@ -98,7 +110,8 @@ class LoggplattformSDK {
       await this._sendBatchLogs(logsToSend);
     } catch (batchError) {
       // Fallback to individual sends if batch fails
-      if (process.env.LOGGPLATTFORM_DEBUG) {
+      // Log for operational visibility if debug is enabled or NODE_ENV is development
+      if (process.env.LOGGPLATTFORM_DEBUG || process.env.NODE_ENV === 'development') {
         console.warn('Loggplattform SDK: Batch send failed, falling back to individual sends:', batchError.message);
       }
       const promises = logsToSend.map(logEntry => this._sendLog(logEntry));
@@ -133,13 +146,17 @@ class LoggplattformSDK {
   }
   
   /**
-   * Flush logs synchronously (for backwards compatibility)
-   * Note: This is now async internally but returns immediately
-   * For true synchronous behavior, use flush() and await it
+   * Non-blocking flush trigger (kept for backwards compatibility).
+   *
+   * BREAKING CHANGE: This method used to flush logs synchronously, but it is now
+   * implemented as an asynchronous fire-and-forget call and returns immediately.
+   * This is a breaking change in behavior for the name `flushSync()`.
+   *
+   * For true synchronous/blocking behavior, call `await flush()` instead.
    */
   flushSync() {
-    // For backwards compatibility, just call async flush
-    // but don't wait for it (non-blocking)
+    // Trigger an asynchronous flush without waiting for completion
+    // (fire-and-forget, non-blocking)
     this.flush().catch(err => {
       if (process.env.LOGGPLATTFORM_DEBUG) {
         console.error('Loggplattform SDK: Error in flushSync:', err.message);
@@ -194,11 +211,23 @@ class LoggplattformSDK {
     this.correlationId = correlationId;
   }
   
+  /**
+   * Destroy the SDK instance and flush pending logs.
+   * 
+   * BREAKING CHANGE: This method is now async and returns a Promise.
+   * Callers must await this method to ensure logs are flushed:
+   * 
+   *   await sdk.destroy();
+   * 
+   * @returns {Promise<void>} A promise that resolves when logs are flushed
+   */
   async destroy() {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
     }
+    // Remove this instance from the set
+    sdkInstances.delete(this);
     await this.flush();
   }
 }

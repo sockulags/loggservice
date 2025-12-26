@@ -243,10 +243,15 @@ async function readArchivedLogs(service, startTime, endTime, filters = {}, maxLo
         });
         
         rl.on('close', () => {
+          // Ensure the underlying file stream is cleaned up when readline closes,
+          // including when it is closed early due to reaching maxLogs.
+          fileStream.destroy();
           resolve();
         });
         
         rl.on('error', (err) => {
+          // Clean up the file stream if an error occurs while reading.
+          fileStream.destroy();
           reject(err);
         });
       });

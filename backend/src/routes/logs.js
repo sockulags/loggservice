@@ -2,11 +2,29 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { getDatabase } = require('../database');
 const { readArchivedLogs } = require('../services/archive');
+const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
 
+// Custom rate limiter for batch endpoint that accounts for batch size
+const batchLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'),
+  // Lower base limit since each request can contain multiple logs
+  max: parseInt(process.env.RATE_LIMIT_BATCH_MAX || '100'), // 100 batch requests per minute
+  message: 'Too many batch log requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Custom handler to account for batch size in rate limiting
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many batch log requests from this IP, please try again later.',
+      retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+    });
+  }
+});
+
 // POST /api/logs/batch - Create multiple log entries at once
-router.post('/batch', async (req, res) => {
+router.post('/batch', batchLimiter, async (req, res) => {
   try {
     const { logs } = req.body;
     const service = req.service.name;
@@ -44,11 +62,17 @@ router.post('/batch', async (req, res) => {
     }
     
     if (errors.length > 0) {
-      return res.status(400).json({ error: 'Validation errors', errors });
+      return res.status(400).json({
+        error: 'Validation errors: entire batch rejected; no logs were created',
+        errors,
+        created: 0
+      });
     }
     
     // Insert all logs in a transaction
     await new Promise((resolve, reject) => {
+      let transactionFailed = false; // Track if transaction has already failed
+      
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
         
@@ -62,13 +86,20 @@ router.post('/batch', async (req, res) => {
         
         for (const log of logs) {
           const logId = uuidv4();
-          const timestamp = new Date().toISOString();
+          // Use provided timestamp if available, otherwise use current time
+          const timestamp = log.timestamp || new Date().toISOString();
           const contextJson = log.context ? JSON.stringify(log.context) : null;
           
           stmt.run(
             [logId, timestamp, log.level.toLowerCase(), service, log.message, contextJson, log.correlation_id || null],
             function(err) {
+              // Skip processing if transaction already failed
+              if (transactionFailed) {
+                return;
+              }
+              
               if (err) {
+                transactionFailed = true;
                 db.run('ROLLBACK', () => {
                   reject(err);
                 });
@@ -89,6 +120,7 @@ router.post('/batch', async (req, res) => {
               if (completed === total) {
                 stmt.finalize((finalizeErr) => {
                   if (finalizeErr) {
+                    transactionFailed = true;
                     db.run('ROLLBACK', () => {
                       reject(finalizeErr);
                     });

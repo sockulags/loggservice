@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const { initDatabase } = require('./database');
 const { authenticate } = require('./middleware/auth');
+const { authenticateAdmin } = require('./middleware/adminAuth');
 const logRoutes = require('./routes/logs');
 const serviceRoutes = require('./routes/services');
 const adminRoutes = require('./routes/admin');
@@ -31,7 +32,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/services', serviceRoutes);
 app.use('/api/logs', authenticate, logRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', authenticateAdmin, adminRoutes);
 
 // Serve web UI for all other routes (if built)
 const webUiIndexPath = path.join(__dirname, '../../web-ui/dist/index.html');

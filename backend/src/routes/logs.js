@@ -147,7 +147,13 @@ router.get('/', async (req, res) => {
       correlationId: correlation_id || null
     };
     
-    const archivedLogsPromise = readArchivedLogs(serviceName, start_time, end_time, filters);
+    // To prevent memory issues, limit archive reading to a reasonable multiple of the requested limit
+    // This helps when there are millions of archived logs
+    const limitNum = parseInt(limit);
+    const offsetNum = parseInt(offset);
+    const maxArchiveLogs = Math.max(limitNum * 3, 1000); // Read at most 3x the requested limit or 1000
+    
+    const archivedLogsPromise = readArchivedLogs(serviceName, start_time, end_time, filters, maxArchiveLogs);
     
     // Wait for both queries
     const [dbLogs, archivedLogs] = await Promise.all([dbLogsPromise, archivedLogsPromise]);
@@ -171,8 +177,6 @@ router.get('/', async (req, res) => {
     
     // Apply pagination
     const total = allLogs.length;
-    const limitNum = parseInt(limit);
-    const offsetNum = parseInt(offset);
     const paginatedLogs = allLogs.slice(offsetNum, offsetNum + limitNum);
     
     res.json({

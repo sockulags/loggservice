@@ -37,7 +37,13 @@ function App() {
         headers: { 'X-API-Key': apiKey }
       });
       
-      setLogs(response.data.logs || []);
+      // Normalize API response: convert snake_case to camelCase for frontend use
+      const normalizedLogs = (response.data.logs || []).map(log => ({
+        ...log,
+        correlationId: log.correlation_id || null
+      }));
+      
+      setLogs(normalizedLogs);
     } catch (error) {
       console.error('Failed to fetch logs:', error);
       if (error.response?.status === 401) {

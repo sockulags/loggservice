@@ -17,20 +17,32 @@ class LoggplattformSDK {
     this.logQueue = [];
     this.flushInterval = options.flushInterval || 5000; // 5 seconds
     this.batchSize = options.batchSize || 10;
+    this.shutdownInProgress = false;
     
     // Start periodic flush
     if (this.flushInterval > 0) {
       this.flushTimer = setInterval(() => this.flush(), this.flushInterval);
     }
     
-    // Flush on process exit
-    process.on('exit', () => this.flushSync());
+    // Flush on process exit - use a single handler to prevent race conditions
+    const shutdownHandler = () => {
+      if (!this.shutdownInProgress) {
+        this.shutdownInProgress = true;
+        if (this.flushTimer) {
+          clearInterval(this.flushTimer);
+          this.flushTimer = undefined;
+        }
+        this.flushSync();
+      }
+    };
+
+    process.on('exit', shutdownHandler);
     process.on('SIGINT', () => {
-      this.flushSync();
+      shutdownHandler();
       process.exit();
     });
     process.on('SIGTERM', () => {
-      this.flushSync();
+      shutdownHandler();
       process.exit();
     });
   }
@@ -187,7 +199,20 @@ class LoggplattformSDK {
       
       return new Promise((resolve, reject) => {
         const req = client.request(options, (res) => {
-          resolve();
+          const statusCode = res.statusCode;
+
+          // Consume response data to free up memory / allow connection reuse
+          res.resume();
+
+          if (statusCode >= 200 && statusCode < 300) {
+            // Treat 2xx responses as success
+            resolve();
+          } else {
+            // Treat non-2xx responses as failures
+            const error = new Error(`Request failed with status code ${statusCode}`);
+            error.statusCode = statusCode;
+            reject(error);
+          }
         });
         
         req.on('error', (error) => {
@@ -234,6 +259,7 @@ class LoggplattformSDK {
   destroy() {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
+      this.flushTimer = undefined;
     }
     this.flushSync();
   }

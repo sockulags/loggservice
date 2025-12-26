@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import * as deasync from 'deasync';
+import { loopWhile } from 'deasync';
 import {
   LogLevel,
   LogContext,
@@ -25,6 +25,7 @@ export class LoggplattformSDK {
   private logQueue: LogEntry[] = [];
   private flushTimer?: NodeJS.Timeout;
   private readonly httpClient: AxiosInstance;
+  private shutdownInProgress: boolean = false;
 
   /**
    * Create a new LoggplattformSDK instance
@@ -73,15 +74,24 @@ export class LoggplattformSDK {
    * Setup shutdown handlers to flush logs on exit
    */
   private setupShutdownHandlers(): void {
-    const flushSync = () => this.flushSync();
+    const shutdownHandler = () => {
+      if (!this.shutdownInProgress) {
+        this.shutdownInProgress = true;
+        if (this.flushTimer) {
+          clearInterval(this.flushTimer);
+          this.flushTimer = undefined;
+        }
+        this.flushSync();
+      }
+    };
 
-    process.on('exit', flushSync);
+    process.on('exit', shutdownHandler);
     process.on('SIGINT', () => {
-      flushSync();
+      shutdownHandler();
       process.exit();
     });
     process.on('SIGTERM', () => {
-      flushSync();
+      shutdownHandler();
       process.exit();
     });
   }
@@ -150,6 +160,14 @@ export class LoggplattformSDK {
 
   /**
    * Flush queued logs synchronously (blocking)
+   * 
+   * WARNING: This method uses deasync.loopWhile which blocks the Node.js event loop.
+   * This is an anti-pattern and can cause the entire application to freeze during flushing.
+   * This method is intended only for use during process shutdown to ensure logs are sent
+   * before the process exits. For normal operation, use the async flush() method instead.
+   * 
+   * Consider allowing the process to exit gracefully after a timeout instead of forcing
+   * synchronous behavior in production applications.
    */
   public flushSync(): void {
     if (this.logQueue.length === 0 || !this.apiKey) {
@@ -195,7 +213,7 @@ export class LoggplattformSDK {
       });
 
       // Synchronously wait for completion using deasync
-      deasync.loopWhile(() => {
+      loopWhile(() => {
         const elapsed = Date.now() - startTime;
         if (elapsed > timeout) {
           return false; // Timeout reached
@@ -265,8 +283,19 @@ export class LoggplattformSDK {
       };
 
       return new Promise<void>((resolve, reject) => {
-        const req = client.request(options, () => {
-          resolve();
+        const req = client.request(options, (res: any) => {
+          const statusCode = res && typeof res.statusCode === 'number' ? res.statusCode : 0;
+
+          // Consume response data to free up memory / sockets
+          if (typeof res.resume === 'function') {
+            res.resume();
+          }
+
+          if (statusCode >= 200 && statusCode < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Request failed with status code ${statusCode}`));
+          }
         });
 
         req.on('error', (error: Error) => {
@@ -332,6 +361,7 @@ export class LoggplattformSDK {
   public destroy(): void {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
+      this.flushTimer = undefined;
     }
     this.flushSync();
   }

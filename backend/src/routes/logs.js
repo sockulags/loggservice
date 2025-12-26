@@ -112,16 +112,29 @@ router.get('/', async (req, res) => {
             return;
           }
           
-          const logs = rows.map(row => ({
-            id: row.id,
-            timestamp: row.timestamp,
-            level: row.level,
-            service: row.service,
-            message: row.message,
-            context: row.context ? JSON.parse(row.context) : null,
-            correlation_id: row.correlation_id,
-            created_at: row.created_at
-          }));
+          const logs = rows.map(row => {
+            let parsedContext = null;
+
+            if (row.context) {
+              try {
+                parsedContext = JSON.parse(row.context);
+              } catch (parseError) {
+                console.error('Failed to parse log context JSON for log id:', row.id, parseError);
+                parsedContext = null;
+              }
+            }
+
+            return {
+              id: row.id,
+              timestamp: row.timestamp,
+              level: row.level,
+              service: row.service,
+              message: row.message,
+              context: parsedContext,
+              correlation_id: row.correlation_id,
+              created_at: row.created_at
+            };
+          });
           
           resolve(logs);
         }
@@ -134,7 +147,13 @@ router.get('/', async (req, res) => {
       correlationId: correlation_id || null
     };
     
-    const archivedLogsPromise = readArchivedLogs(serviceName, start_time, end_time, filters);
+    // To prevent memory issues, limit archive reading to a reasonable multiple of the requested range
+    // (offset + limit). This helps when there are millions of archived logs.
+    const limitNum = parseInt(limit);
+    const offsetNum = parseInt(offset);
+    const maxArchiveLogs = Math.max((limitNum + offsetNum) * 2, 1000); // Read at most 2x requested range or 1000
+    
+    const archivedLogsPromise = readArchivedLogs(serviceName, start_time, end_time, filters, maxArchiveLogs);
     
     // Wait for both queries
     const [dbLogs, archivedLogs] = await Promise.all([dbLogsPromise, archivedLogsPromise]);
@@ -158,8 +177,6 @@ router.get('/', async (req, res) => {
     
     // Apply pagination
     const total = allLogs.length;
-    const limitNum = parseInt(limit);
-    const offsetNum = parseInt(offset);
     const paginatedLogs = allLogs.slice(offsetNum, offsetNum + limitNum);
     
     res.json({

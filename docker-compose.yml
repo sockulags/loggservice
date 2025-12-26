@@ -11,6 +11,7 @@ services:
     environment:
       - PORT=3000
       - DB_PATH=/app/data/logs.db
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-change-this-admin-key-in-production}
     volumes:
       - backend-data:/app/data
     restart: unless-stopped

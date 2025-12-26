@@ -2,8 +2,171 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { getDatabase } = require('../database');
 const { readArchivedLogs } = require('../services/archive');
+const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
+
+// Rate limiter for batch endpoint with lower limit since each request can contain multiple logs
+const batchLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'),
+  // Lower base limit since each request can contain multiple logs
+  max: parseInt(process.env.RATE_LIMIT_BATCH_MAX || '100'), // 100 batch requests per minute
+  message: 'Too many batch log requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many batch log requests from this IP, please try again later.',
+      retryAfter: Math.ceil(req.rateLimit.resetTime / 1000)
+    });
+  }
+});
+
+// POST /api/logs/batch - Create multiple log entries at once
+router.post('/batch', batchLimiter, async (req, res) => {
+  try {
+    const { logs } = req.body;
+    const service = req.service.name;
+    
+    if (!Array.isArray(logs)) {
+      return res.status(400).json({ error: 'logs must be an array' });
+    }
+    
+    if (logs.length === 0) {
+      return res.status(400).json({ error: 'logs array cannot be empty' });
+    }
+    
+    // Limit batch size to prevent abuse
+    const MAX_BATCH_SIZE = parseInt(process.env.MAX_BATCH_SIZE || '100');
+    if (logs.length > MAX_BATCH_SIZE) {
+      return res.status(400).json({ error: `Batch size exceeds maximum of ${MAX_BATCH_SIZE}` });
+    }
+    
+    const validLevels = ['info', 'warn', 'error', 'debug'];
+    const db = getDatabase();
+    const results = [];
+    const errors = [];
+    
+    // Validate all logs first
+    for (let i = 0; i < logs.length; i++) {
+      const log = logs[i];
+      if (!log.level || !log.message) {
+        errors.push({ index: i, error: 'Level and message are required' });
+        continue;
+      }
+      if (!validLevels.includes(log.level.toLowerCase())) {
+        errors.push({ index: i, error: `Invalid level. Must be one of: ${validLevels.join(', ')}` });
+        continue;
+      }
+      // Validate timestamp if provided
+      if (log.timestamp) {
+        const timestampDate = new Date(log.timestamp);
+        if (isNaN(timestampDate.getTime())) {
+          errors.push({ index: i, error: 'Invalid timestamp format. Must be a valid ISO 8601 date string' });
+          continue;
+        }
+        // Check if timestamp is within reasonable bounds (1 year in past to 1 hour in future)
+        const now = Date.now();
+        const oneYearAgo = now - (365 * 24 * 60 * 60 * 1000);
+        const oneHourFromNow = now + (60 * 60 * 1000);
+        const timestampMs = timestampDate.getTime();
+        if (timestampMs < oneYearAgo || timestampMs > oneHourFromNow) {
+          errors.push({ index: i, error: 'Timestamp out of reasonable bounds (must be within 1 year ago to 1 hour in future)' });
+          continue;
+        }
+      }
+    }
+    
+    if (errors.length > 0) {
+      return res.status(400).json({
+        error: 'Validation errors: entire batch rejected; no logs were created',
+        errors,
+        created: 0
+      });
+    }
+    
+    // Insert all logs in a transaction
+    await new Promise((resolve, reject) => {
+      let transactionFailed = false; // Track if transaction has already failed
+      
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        
+        const stmt = db.prepare(
+          `INSERT INTO logs (id, timestamp, level, service, message, context, correlation_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        );
+        
+        let completed = 0;
+        const total = logs.length;
+        
+        for (const log of logs) {
+          const logId = uuidv4();
+          // Use provided timestamp if available, otherwise use current time
+          const timestamp = log.timestamp || new Date().toISOString();
+          const contextJson = log.context ? JSON.stringify(log.context) : null;
+          
+          stmt.run(
+            [logId, timestamp, log.level.toLowerCase(), service, log.message, contextJson, log.correlation_id || null],
+            function(err) {
+              // Skip processing if transaction already failed
+              if (transactionFailed) {
+                return;
+              }
+              
+              if (err) {
+                transactionFailed = true;
+                db.run('ROLLBACK', () => {
+                  reject(err);
+                });
+                return;
+              }
+              
+              results.push({
+                id: logId,
+                timestamp,
+                level: log.level.toLowerCase(),
+                service,
+                message: log.message,
+                context: log.context,
+                correlation_id: log.correlation_id || null
+              });
+              
+              completed++;
+              if (completed >= total) {
+                stmt.finalize((finalizeErr) => {
+                  if (finalizeErr) {
+                    transactionFailed = true;
+                    db.run('ROLLBACK', () => {
+                      reject(finalizeErr);
+                    });
+                  } else {
+                    db.run('COMMIT', (commitErr) => {
+                      if (commitErr) {
+                        transactionFailed = true;
+                        reject(commitErr);
+                      } else {
+                        resolve();
+                      }
+                    });
+                  }
+                });
+              }
+            }
+          );
+        }
+      });
+    });
+    
+    res.status(201).json({
+      created: results.length,
+      logs: results
+    });
+  } catch (error) {
+    console.error('Error creating batch logs:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // POST /api/logs - Create a new log entry
 router.post('/', async (req, res) => {

@@ -147,11 +147,11 @@ router.get('/', async (req, res) => {
       correlationId: correlation_id || null
     };
     
-    // To prevent memory issues, limit archive reading to a reasonable multiple of the requested limit
-    // This helps when there are millions of archived logs
+    // To prevent memory issues, limit archive reading to a reasonable multiple of the requested range
+    // (offset + limit). This helps when there are millions of archived logs.
     const limitNum = parseInt(limit);
     const offsetNum = parseInt(offset);
-    const maxArchiveLogs = Math.max(limitNum * 3, 1000); // Read at most 3x the requested limit or 1000
+    const maxArchiveLogs = Math.max((limitNum + offsetNum) * 2, 1000); // Read at most 2x requested range or 1000
     
     const archivedLogsPromise = readArchivedLogs(serviceName, start_time, end_time, filters, maxArchiveLogs);
     

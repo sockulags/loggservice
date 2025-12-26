@@ -1,6 +1,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { getDatabase } = require('../database');
+const { readArchivedLogs } = require('../services/archive');
 
 const router = express.Router();
 
@@ -54,7 +55,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET /api/logs - Query logs with filtering
+// GET /api/logs - Query logs with filtering (from DB + archived files)
 router.get('/', async (req, res) => {
   try {
     const { 
@@ -67,13 +68,14 @@ router.get('/', async (req, res) => {
       offset = 0 
     } = req.query;
     
+    const serviceName = req.service.name;
     const db = getDatabase();
     const conditions = [];
     const params = [];
     
     // Service isolation - only show logs for the authenticated service
     conditions.push('service = ?');
-    params.push(req.service.name);
+    params.push(serviceName);
     
     if (level) {
       conditions.push('level = ?');
@@ -97,51 +99,79 @@ router.get('/', async (req, res) => {
     
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     
-    // Get total count
-    db.get(
-      `SELECT COUNT(*) as total FROM logs ${whereClause}`,
-      params,
-      (err, countResult) => {
-        if (err) {
-          console.error('Database error:', err);
-          return res.status(500).json({ error: 'Failed to query logs' });
-        }
-        
-        // Get logs
-        params.push(parseInt(limit), parseInt(offset));
-        db.all(
-          `SELECT id, timestamp, level, service, message, context, correlation_id, created_at
-           FROM logs ${whereClause}
-           ORDER BY timestamp DESC
-           LIMIT ? OFFSET ?`,
-          params,
-          (err, rows) => {
-            if (err) {
-              console.error('Database error:', err);
-              return res.status(500).json({ error: 'Failed to query logs' });
-            }
-            
-            const logs = rows.map(row => ({
-              id: row.id,
-              timestamp: row.timestamp,
-              level: row.level,
-              service: row.service,
-              message: row.message,
-              context: row.context ? JSON.parse(row.context) : null,
-              correlation_id: row.correlation_id,
-              created_at: row.created_at
-            }));
-            
-            res.json({
-              logs,
-              total: countResult.total,
-              limit: parseInt(limit),
-              offset: parseInt(offset)
-            });
+    // Get logs from database
+    const dbLogsPromise = new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, timestamp, level, service, message, context, correlation_id, created_at
+         FROM logs ${whereClause}
+         ORDER BY timestamp DESC`,
+        params,
+        (err, rows) => {
+          if (err) {
+            reject(err);
+            return;
           }
-        );
+          
+          const logs = rows.map(row => ({
+            id: row.id,
+            timestamp: row.timestamp,
+            level: row.level,
+            service: row.service,
+            message: row.message,
+            context: row.context ? JSON.parse(row.context) : null,
+            correlation_id: row.correlation_id,
+            created_at: row.created_at
+          }));
+          
+          resolve(logs);
+        }
+      );
+    });
+    
+    // Get logs from archived files (if time range overlaps with archives)
+    const filters = {
+      level: level ? level.toLowerCase() : null,
+      correlationId: correlation_id || null
+    };
+    
+    const archivedLogsPromise = readArchivedLogs(serviceName, start_time, end_time, filters);
+    
+    // Wait for both queries
+    const [dbLogs, archivedLogs] = await Promise.all([dbLogsPromise, archivedLogsPromise]);
+    
+    // Combine and deduplicate logs (by ID)
+    const logMap = new Map();
+    
+    // Add archived logs first (older)
+    for (const log of archivedLogs) {
+      logMap.set(log.id, log);
+    }
+    
+    // Add database logs (newer, will overwrite if duplicate)
+    for (const log of dbLogs) {
+      logMap.set(log.id, log);
+    }
+    
+    // Convert to array and sort by timestamp descending
+    let allLogs = Array.from(logMap.values());
+    allLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    // Apply pagination
+    const total = allLogs.length;
+    const limitNum = parseInt(limit);
+    const offsetNum = parseInt(offset);
+    const paginatedLogs = allLogs.slice(offsetNum, offsetNum + limitNum);
+    
+    res.json({
+      logs: paginatedLogs,
+      total: total,
+      limit: limitNum,
+      offset: offsetNum,
+      sources: {
+        database: dbLogs.length,
+        archived: archivedLogs.length
       }
-    );
+    });
   } catch (error) {
     console.error('Error querying logs:', error);
     res.status(500).json({ error: 'Internal server error' });

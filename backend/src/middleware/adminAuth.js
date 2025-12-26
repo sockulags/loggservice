@@ -7,14 +7,6 @@ async function authenticateAdmin(req, res, next) {
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
   const adminApiKey = process.env.ADMIN_API_KEY;
   
-  // Always require ADMIN_API_KEY to be set
-  if (!adminApiKey) {
-    console.error('ADMIN_API_KEY environment variable is not set');
-    return res.status(500).json({ 
-      error: 'Server configuration error: ADMIN_API_KEY is required' 
-    });
-  }
-  
   // Check if API key is provided
   if (!apiKey) {
     return res.status(401).json({ error: 'Missing API key' });

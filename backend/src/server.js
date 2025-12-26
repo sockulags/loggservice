@@ -27,18 +27,21 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : ['http://localhost:5173', 'http://localhost:3000']; // Default to common dev origins
 
+const allowAllOrigins = allowedOrigins.includes('*');
+
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+    if (allowedOrigins.indexOf(origin) !== -1 || allowAllOrigins) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  // When '*' is allowed, do not allow credentials to avoid exposing authenticated requests to any origin
+  credentials: !allowAllOrigins
 }));
 
 // Rate limiting
@@ -59,6 +62,15 @@ const logLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Rate limiting for health check to prevent DoS
+const healthCheckLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'),
+  max: parseInt(process.env.RATE_LIMIT_HEALTH_MAX || '60'), // 60 requests per minute for health checks
+  message: 'Too many health check requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Apply general rate limiting to all routes
 app.use(limiter);
 
@@ -71,8 +83,8 @@ if (require('fs').existsSync(webUiPath)) {
   app.use(express.static(webUiPath));
 }
 
-// Health check with database validation
-app.get('/health', async (req, res) => {
+// Health check with database validation and rate limiting
+app.get('/health', healthCheckLimiter, async (req, res) => {
   try {
     const { getDatabase } = require('./database');
     const db = getDatabase();

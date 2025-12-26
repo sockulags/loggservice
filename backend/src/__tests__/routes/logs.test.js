@@ -1,17 +1,19 @@
 const request = require('supertest');
 const express = require('express');
 const logRoutes = require('../../routes/logs');
-const { authenticate } = require('../../middleware/auth');
 const { getDatabase } = require('../../database');
 const { readArchivedLogs } = require('../../services/archive');
 
 jest.mock('../../database');
 jest.mock('../../services/archive');
+
+const mockAuthenticate = jest.fn((req, res, next) => {
+  req.service = { id: 'test-id', name: 'test-service' };
+  next();
+});
+
 jest.mock('../../middleware/auth', () => ({
-  authenticate: jest.fn((req, res, next) => {
-    req.service = { id: 'test-id', name: 'test-service' };
-    next();
-  })
+  authenticate: mockAuthenticate
 }));
 
 describe('Log Routes', () => {
@@ -20,6 +22,8 @@ describe('Log Routes', () => {
   beforeEach(() => {
     app = express();
     app.use(express.json());
+    // Apply authentication middleware
+    app.use(mockAuthenticate);
     app.use('/api/logs', logRoutes);
   });
 
@@ -85,16 +89,12 @@ describe('Log Routes', () => {
   describe('POST /api/logs/batch', () => {
     test('should create multiple log entries', (done) => {
       let completed = 0;
-      const totalLogs = 2;
-      const results = [];
       
       const mockStmt = {
         run: jest.fn((params, callback) => {
           completed++;
-          // Simulate successful insert
-          setTimeout(() => {
-            callback(null);
-          }, 10);
+          // Simulate successful insert without time-based delay
+          callback(null);
         }),
         finalize: jest.fn((callback) => {
           callback(null);
@@ -106,12 +106,9 @@ describe('Log Routes', () => {
           callback();
         }),
         run: jest.fn((query, callback) => {
-          if (query === 'BEGIN TRANSACTION') {
-            callback(null);
-          } else if (query === 'COMMIT') {
-            callback(null);
-          } else if (query === 'ROLLBACK') {
-            callback(null);
+          if (query === 'BEGIN TRANSACTION' || query === 'COMMIT' || query === 'ROLLBACK') {
+            // These are called without a callback
+            if (callback) callback(null);
           }
         }),
         prepare: jest.fn(() => mockStmt)

@@ -109,17 +109,30 @@ async function archiveOldLogs(daysOld = 1) {
         
         // Delete archived logs from database
         const logIds = logs.map(log => log.id);
-        const placeholders = logIds.map(() => '?').join(',');
-        
+
         await new Promise((resolve, reject) => {
-          db.run(
-            `DELETE FROM logs WHERE id IN (${placeholders})`,
-            logIds,
-            function(err) {
-              if (err) reject(err);
-              else resolve();
+          db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+            const stmt = db.prepare('DELETE FROM logs WHERE id = ?');
+
+            for (const id of logIds) {
+              stmt.run(id);
             }
-          );
+
+            stmt.finalize(err => {
+              if (err) {
+                db.run('ROLLBACK', () => reject(err));
+              } else {
+                db.run('COMMIT', commitErr => {
+                  if (commitErr) {
+                    reject(commitErr);
+                  } else {
+                    resolve();
+                  }
+                });
+              }
+            });
+          });
         });
         
         totalArchived += logs.length;

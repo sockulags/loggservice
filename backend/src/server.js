@@ -7,6 +7,8 @@ const { initDatabase } = require('./database');
 const { authenticate } = require('./middleware/auth');
 const logRoutes = require('./routes/logs');
 const serviceRoutes = require('./routes/services');
+const adminRoutes = require('./routes/admin');
+const { startScheduler } = require('./services/scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,6 +31,7 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/services', serviceRoutes);
 app.use('/api/logs', authenticate, logRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Serve web UI for all other routes (if built)
 const webUiIndexPath = path.join(__dirname, '../../web-ui/dist/index.html');
@@ -40,6 +43,9 @@ if (require('fs').existsSync(webUiIndexPath)) {
 
 // Initialize database and start server
 initDatabase().then(() => {
+  // Start archive scheduler
+  startScheduler();
+  
   app.listen(PORT, () => {
     console.log(`Logging platform backend running on port ${PORT}`);
   });

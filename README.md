@@ -229,13 +229,55 @@ Skapa en ny tjänst (för admin/testing).
 }
 ```
 
-## 🗄️ Databas
+## 🗄️ Databas och Arkivering
 
-Loggar lagras i SQLite-databasen (`backend/data/logs.db`). Databasen är append-only och optimerad för läsning med index på:
+### Databas
+
+Loggar lagras initialt i SQLite-databasen (`backend/data/logs.db`). Databasen är append-only och optimerad för läsning med index på:
 - `service`
 - `level`
 - `timestamp`
 - `correlation_id`
+
+### Arkivering
+
+För att hantera stora volymer loggar (miljarder rader) finns ett automatisk arkiveringssystem:
+
+**Funktioner:**
+- **Schemalagd arkivering:** Loggar äldre än 1 dag flyttas automatiskt från databasen till filer
+- **Filbaserad lagring:** Arkiverade loggar sparas som JSONL-filer (en fil per service per dag)
+- **Filstruktur:** `data/archives/YYYY-MM-DD/service.jsonl`
+- **Automatisk rensning:** Gamla arkiv (>30 dagar) raderas automatiskt
+- **Kombinerad läsning:** Vid sökning läses loggar från både databas och arkiverade filer
+
+**Konfiguration:**
+```bash
+ARCHIVE_SCHEDULE=0 2 * * *        # Cron-schema (dagligen kl 02:00 UTC)
+ARCHIVE_DAYS_OLD=1                # Arkivera loggar äldre än X dagar
+ARCHIVE_RETENTION_DAYS=30         # Behåll arkiv i X dagar
+ARCHIVE_BATCH_SIZE=10000          # Antal loggar att arkivera per batch
+CLEANUP_SCHEDULE=0 3 * * *        # Rensning (dagligen kl 03:00 UTC)
+```
+
+**Manuell arkivering:**
+```bash
+# Arkivera loggar äldre än 1 dag
+curl -X POST http://localhost:3000/api/admin/archive \
+  -H "Content-Type: application/json" \
+  -d '{"daysOld": 1}'
+
+# Kör arkivering direkt
+curl -X POST http://localhost:3000/api/admin/archive-now
+
+# Rensa gamla arkiv
+curl -X POST http://localhost:3000/api/admin/cleanup
+```
+
+**Läsning:**
+När du söker efter loggar (`GET /api/logs`) kombineras automatiskt:
+- Loggar från databasen (senaste dagarna)
+- Loggar från arkiverade filer (om tidsintervall överlappar)
+- Resultat sorteras och dedupliceras automatiskt
 
 ## 🔐 Säkerhet
 

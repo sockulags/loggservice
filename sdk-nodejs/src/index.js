@@ -28,6 +28,10 @@ class LoggplattformSDK {
     const shutdownHandler = () => {
       if (!this.shutdownInProgress) {
         this.shutdownInProgress = true;
+        if (this.flushTimer) {
+          clearInterval(this.flushTimer);
+          this.flushTimer = undefined;
+        }
         this.flushSync();
       }
     };
@@ -255,6 +259,7 @@ class LoggplattformSDK {
   destroy() {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
+      this.flushTimer = undefined;
     }
     this.flushSync();
   }

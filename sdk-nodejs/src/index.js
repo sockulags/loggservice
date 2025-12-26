@@ -1,4 +1,5 @@
 const axios = require('axios');
+const deasync = require('deasync');
 
 class LoggplattformSDK {
   constructor(options = {}) {
@@ -87,14 +88,47 @@ class LoggplattformSDK {
     const logsToSend = [...this.logQueue];
     this.logQueue = [];
     
-    // Send synchronously (blocking)
+    // Send synchronously (blocking) - wait for all to complete
+    const promises = [];
     for (const logEntry of logsToSend) {
       try {
-        this._sendLogSync(logEntry);
+        const promise = this._sendLogSync(logEntry);
+        if (promise) {
+          promises.push(promise.catch(error => {
+            // SDK errors should never crash the app
+            if (process.env.LOGGPLATTFORM_DEBUG) {
+              console.error('Loggplattform SDK: Failed to send log:', error.message);
+            }
+          }));
+        }
       } catch (error) {
         // SDK errors should never crash the app
-        console.error('Loggplattform SDK: Failed to send log:', error.message);
+        if (process.env.LOGGPLATTFORM_DEBUG) {
+          console.error('Loggplattform SDK: Failed to send log:', error.message);
+        }
       }
+    }
+    
+    // Block until all promises complete (with timeout)
+    if (promises.length > 0) {
+      const startTime = Date.now();
+      const timeout = 10000; // 10 second timeout
+      let completed = false;
+      
+      Promise.all(promises).then(() => {
+        completed = true;
+      }).catch(() => {
+        completed = true;
+      });
+      
+      // Synchronously wait for completion using deasync
+      deasync.loopWhile(() => {
+        const elapsed = Date.now() - startTime;
+        if (elapsed > timeout) {
+          return false; // Timeout reached
+        }
+        return !completed; // Continue while not completed
+      });
     }
   }
   
@@ -126,7 +160,7 @@ class LoggplattformSDK {
   
   _sendLogSync(logEntry) {
     if (!this.apiKey) {
-      return;
+      return Promise.resolve();
     }
     
     try {
@@ -173,6 +207,7 @@ class LoggplattformSDK {
       if (process.env.LOGGPLATTFORM_DEBUG) {
         console.error('Loggplattform SDK: Failed to send log:', error.message);
       }
+      return Promise.resolve(); // Return resolved promise on error
     }
   }
   

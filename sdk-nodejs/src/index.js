@@ -35,7 +35,7 @@ class LoggplattformSDK {
       processHandlersRegistered = true;
       
       // For SIGINT/SIGTERM, flush all instances and let process exit naturally
-      const signalHandler = async (signal) => {
+      const signalHandler = async () => {
         // Set exit code if not already set
         if (process.exitCode === undefined || process.exitCode === null) {
           process.exitCode = 0;
@@ -110,8 +110,10 @@ class LoggplattformSDK {
       await this._sendBatchLogs(logsToSend);
     } catch (batchError) {
       // Fallback to individual sends if batch fails
-      // Log at warn level for operational visibility
-      console.warn('Loggplattform SDK: Batch send failed, falling back to individual sends:', batchError.message);
+      // Log for operational visibility if debug is enabled or NODE_ENV is development
+      if (process.env.LOGGPLATTFORM_DEBUG || process.env.NODE_ENV === 'development') {
+        console.warn('Loggplattform SDK: Batch send failed, falling back to individual sends:', batchError.message);
+      }
       const promises = logsToSend.map(logEntry => this._sendLog(logEntry));
       await Promise.allSettled(promises);
     }

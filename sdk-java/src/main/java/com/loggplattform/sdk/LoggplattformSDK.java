@@ -36,8 +36,11 @@ public class LoggplattformSDK {
             System.getenv().getOrDefault("LOGGPLATTFORM_API_KEY", "");
         this.service = builder.service != null ? builder.service : 
             System.getenv().getOrDefault("LOGGPLATTFORM_SERVICE", "default-service");
-        this.environment = builder.environment != null ? builder.environment : 
-            System.getenv().getOrDefault("NODE_ENV", "development");
+        this.environment = builder.environment != null ? builder.environment :
+            System.getenv().getOrDefault("LOGGPLATTFORM_ENVIRONMENT",
+                System.getenv().getOrDefault("ENVIRONMENT",
+                    System.getenv().getOrDefault("APP_ENV",
+                        System.getenv().getOrDefault("NODE_ENV", "development"))));
         this.correlationId = builder.correlationId;
         
         if (this.apiKey.isEmpty()) {
@@ -231,6 +234,7 @@ public class LoggplattformSDK {
                 executorService.shutdownNow();
             }
             flushSync();
+            httpClient.connectionPool().evictAll();
             httpClient.dispatcher().executorService().shutdown();
         }
     }

@@ -18,8 +18,20 @@ async function authenticateAdmin(req, res, next) {
     return next();
   }
   
-  // Access denied if key doesn't match
-  return res.status(403).json({ error: 'Admin access denied' });
+  db.get('SELECT id, name FROM services WHERE api_key = ?', [apiKey], (err, service) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (!service) {
+      return res.status(401).json({ error: 'Invalid API key' });
+    }
+    
+    // Attach service info to request
+    req.service = service;
+    req.isAdmin = true;
+    return next();
+  });
 }
 
 module.exports = { authenticateAdmin };

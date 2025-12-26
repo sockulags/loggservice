@@ -177,11 +177,29 @@ async function readArchivedLogs(service, startTime, endTime, filters = {}) {
         continue;
       }
       
+      // Check file size before reading to prevent memory issues
+      const stats = await fs.stat(archivePath);
+      const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit
+      
+      if (stats.size > MAX_FILE_SIZE) {
+        console.warn(`Archive file ${archivePath} is too large (${stats.size} bytes), skipping`);
+        continue;
+      }
+      
       // Read file line by line (JSONL format)
       const content = await fs.readFile(archivePath, 'utf8');
       const lines = content.trim().split('\n').filter(line => line.trim());
       
-      for (const line of lines) {
+      // Limit number of lines to prevent infinite loops
+      const MAX_LINES = 1000000; // 1 million lines
+      const lineCount = Math.min(lines.length, MAX_LINES);
+      
+      if (lines.length > MAX_LINES) {
+        console.warn(`Archive file ${archivePath} has too many lines (${lines.length}), processing only first ${MAX_LINES}`);
+      }
+      
+      for (let i = 0; i < lineCount; i++) {
+        const line = lines[i];
         try {
           const log = JSON.parse(line);
           

@@ -112,16 +112,29 @@ router.get('/', async (req, res) => {
             return;
           }
           
-          const logs = rows.map(row => ({
-            id: row.id,
-            timestamp: row.timestamp,
-            level: row.level,
-            service: row.service,
-            message: row.message,
-            context: row.context ? JSON.parse(row.context) : null,
-            correlation_id: row.correlation_id,
-            created_at: row.created_at
-          }));
+          const logs = rows.map(row => {
+            let parsedContext = null;
+
+            if (row.context) {
+              try {
+                parsedContext = JSON.parse(row.context);
+              } catch (parseError) {
+                console.error('Failed to parse log context JSON for log id:', row.id, parseError);
+                parsedContext = null;
+              }
+            }
+
+            return {
+              id: row.id,
+              timestamp: row.timestamp,
+              level: row.level,
+              service: row.service,
+              message: row.message,
+              context: parsedContext,
+              correlation_id: row.correlation_id,
+              created_at: row.created_at
+            };
+          });
           
           resolve(logs);
         }

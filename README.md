@@ -85,6 +85,7 @@ Om du vill köra tjänsterna lokalt utan Docker:
 
 ### SDK:er
 - **Node.js SDK:** `/sdk-nodejs`
+- **TypeScript SDK:** `/sdk-typescript`
 - **Java SDK:** `/sdk-java`
 
 ## 📖 Användning
@@ -117,6 +118,24 @@ curl -X POST http://localhost:3000/api/logs \
 
 ```javascript
 const LoggplattformSDK = require('./sdk-nodejs/src/index.js');
+
+const logger = new LoggplattformSDK({
+  apiUrl: 'http://localhost:3000',
+  apiKey: 'your-api-key-here',
+  service: 'my-service',
+  environment: 'production'
+});
+
+logger.info('Application started');
+logger.warn('High memory usage');
+logger.error('Database connection failed');
+logger.debug('Processing request', { userId: 123 });
+```
+
+### TypeScript SDK
+
+```typescript
+import { LoggplattformSDK } from './sdk-typescript/src/index';
 
 const logger = new LoggplattformSDK({
   apiUrl: 'http://localhost:3000',
@@ -276,6 +295,12 @@ loggplattform/
 │   ├── src/
 │   │   └── index.js
 │   └── package.json
+├── sdk-typescript/    # TypeScript SDK
+│   ├── src/
+│   │   ├── index.ts
+│   │   └── types.ts
+│   ├── dist/          # Compiled JavaScript
+│   └── package.json
 ├── sdk-java/          # Java SDK
 │   ├── src/main/java/
 │   └── pom.xml
@@ -288,12 +313,21 @@ loggplattform/
 
 ## 🧪 Testa
 
-### Testa Node.js SDK
+### Testa SDK:er
 
+**Node.js SDK:**
 ```bash
 cd sdk-nodejs
 npm install
 node test/test.js
+```
+
+**TypeScript SDK:**
+```bash
+cd sdk-typescript
+npm install
+npm run build
+npm test
 ```
 
 ### Testa API direkt
@@ -334,7 +368,7 @@ Varje logg innehåller:
 ## 🎯 Funktioner
 
 ✅ Central logginsamling  
-✅ Multi-språk SDK:er (Node.js, Java)  
+✅ Multi-språk SDK:er (Node.js, TypeScript, Java)  
 ✅ Web UI med filtrering och tidslinje  
 ✅ Service-isolering  
 ✅ Korrelations-ID stöd  

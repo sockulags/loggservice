@@ -63,6 +63,9 @@ const logLimiter = rateLimit({
 });
 
 // Rate limiting for health check to prevent DoS
+// Note: Default limit (60/min) may need adjustment in production environments with
+// multiple monitoring systems or load balancers performing frequent health checks.
+// Increase RATE_LIMIT_HEALTH_MAX if needed.
 const healthCheckLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'),
   max: parseInt(process.env.RATE_LIMIT_HEALTH_MAX || '60'), // 60 requests per minute for health checks

@@ -34,28 +34,25 @@ class LoggplattformSDK {
     if (!processHandlersRegistered) {
       processHandlersRegistered = true;
       
-      // For SIGINT/SIGTERM, flush all instances and let process exit naturally
+      // For SIGINT/SIGTERM, flush all instances then explicitly exit
       const signalHandler = async () => {
-        // Set exit code if not already set
-        if (process.exitCode === undefined || process.exitCode === null) {
-          process.exitCode = 0;
-        }
-        
         // Flush all SDK instances
         const flushPromises = Array.from(sdkInstances).map(instance => {
-          if (!instance.shutdownInProgress) {
-            instance.shutdownInProgress = true;
-            if (instance.flushTimer) {
-              clearInterval(instance.flushTimer);
-              instance.flushTimer = undefined;
-            }
-            return instance.flush().catch(err => {
-              if (process.env.LOGGPLATTFORM_DEBUG) {
-                console.error('Loggplattform SDK: Error flushing logs on shutdown:', err.message);
-              }
-            });
+          // Skip instances that have been destroyed or are already shutting down
+          if (!sdkInstances.has(instance) || instance.shutdownInProgress) {
+            return Promise.resolve();
           }
-          return Promise.resolve();
+
+          instance.shutdownInProgress = true;
+          if (instance.flushTimer) {
+            clearInterval(instance.flushTimer);
+            instance.flushTimer = undefined;
+          }
+          return instance.flush().catch(err => {
+            if (process.env.LOGGPLATTFORM_DEBUG) {
+              console.error('Loggplattform SDK: Error flushing logs on shutdown:', err.message);
+            }
+          });
         });
         
         // Wait up to 2 seconds for flush to complete
@@ -63,6 +60,9 @@ class LoggplattformSDK {
           Promise.all(flushPromises),
           new Promise(resolve => setTimeout(resolve, 2000))
         ]);
+        
+        // Explicitly exit after flush operations complete
+        process.exit(0);
       };
 
       process.on('SIGINT', signalHandler);

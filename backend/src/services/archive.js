@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
+const readline = require('readline');
 const { getDatabase } = require('../database');
 
 const ARCHIVE_DIR = process.env.ARCHIVE_DIR || path.join(__dirname, '../../data/archives');
@@ -192,49 +193,63 @@ async function readArchivedLogs(service, startTime, endTime, filters = {}, maxLo
         continue;
       }
       
-      // Read file line by line (JSONL format)
-      const content = await fs.readFile(archivePath, 'utf8');
-      const lines = content.trim().split('\n').filter(line => line.trim());
-      
-      // Limit number of lines to prevent infinite loops
-      const MAX_LINES = 1000000; // 1 million lines
-      const lineCount = Math.min(lines.length, MAX_LINES);
-      
-      if (lines.length > MAX_LINES) {
-        console.warn(`Archive file ${archivePath} has too many lines (${lines.length}), processing only first ${MAX_LINES}`);
-      }
-      
-      for (let i = 0; i < lineCount; i++) {
-        const line = lines[i];
-        try {
-          const log = JSON.parse(line);
-          
-          // Apply filters
-          const logTime = new Date(log.timestamp);
-          
-          if (logTime < startDate || logTime > endDate) {
-            continue;
+      // Read file using streaming (line by line) to avoid loading entire file into memory
+      await new Promise((resolve, reject) => {
+        const fileStream = fsSync.createReadStream(archivePath, { encoding: 'utf8' });
+        const rl = readline.createInterface({
+          input: fileStream,
+          crlfDelay: Infinity
+        });
+        
+        rl.on('line', (line) => {
+          // Skip empty lines
+          if (!line.trim()) {
+            return;
           }
-          
-          if (filters.level && log.level !== filters.level) {
-            continue;
-          }
-          
-          if (filters.correlationId && log.correlation_id !== filters.correlationId) {
-            continue;
-          }
-          
-          logs.push(log);
           
           // Early exit if we've reached the maximum number of logs
           if (maxLogs && logs.length >= maxLogs) {
-            console.log(`Reached maxLogs limit (${maxLogs}), stopping archive read early`);
-            break;
+            rl.close();
+            return;
           }
-        } catch (parseError) {
-          console.error(`Failed to parse log line: ${parseError.message}`);
-        }
-      }
+          
+          try {
+            const log = JSON.parse(line);
+            
+            // Apply filters
+            const logTime = new Date(log.timestamp);
+            
+            if (logTime < startDate || logTime > endDate) {
+              return;
+            }
+            
+            if (filters.level && log.level !== filters.level) {
+              return;
+            }
+            
+            if (filters.correlationId && log.correlation_id !== filters.correlationId) {
+              return;
+            }
+            
+            logs.push(log);
+            
+            // Early exit if we've reached the maximum number of logs
+            if (maxLogs && logs.length >= maxLogs) {
+              rl.close();
+            }
+          } catch (parseError) {
+            console.error(`Failed to parse log line: ${parseError.message}`);
+          }
+        });
+        
+        rl.on('close', () => {
+          resolve();
+        });
+        
+        rl.on('error', (err) => {
+          reject(err);
+        });
+      });
       
       // Break outer loop if we've reached the limit
       if (maxLogs && logs.length >= maxLogs) {

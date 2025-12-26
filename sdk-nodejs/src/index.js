@@ -1,5 +1,4 @@
 const axios = require('axios');
-const deasync = require('deasync');
 
 class LoggplattformSDK {
   constructor(options = {}) {
@@ -24,27 +23,39 @@ class LoggplattformSDK {
       this.flushTimer = setInterval(() => this.flush(), this.flushInterval);
     }
     
-    // Flush on process exit - use a single handler to prevent race conditions
-    const shutdownHandler = () => {
+    // Flush on process exit - use async handler
+    const shutdownHandler = async () => {
       if (!this.shutdownInProgress) {
         this.shutdownInProgress = true;
         if (this.flushTimer) {
           clearInterval(this.flushTimer);
           this.flushTimer = undefined;
         }
-        this.flushSync();
+        // Attempt to flush logs, but don't block shutdown
+        await this.flush().catch(err => {
+          if (process.env.LOGGPLATTFORM_DEBUG) {
+            console.error('Loggplattform SDK: Error flushing logs on shutdown:', err.message);
+          }
+        });
       }
     };
 
-    process.on('exit', shutdownHandler);
-    process.on('SIGINT', () => {
-      shutdownHandler();
-      process.exit();
+    // Use beforeExit for async cleanup (allows async operations)
+    process.on('beforeExit', async () => {
+      await shutdownHandler();
     });
-    process.on('SIGTERM', () => {
-      shutdownHandler();
-      process.exit();
-    });
+
+    // For SIGINT/SIGTERM, try to flush but don't block indefinitely
+    const signalHandler = async () => {
+      await shutdownHandler();
+      // Give a short time for logs to send, then exit
+      setTimeout(() => {
+        process.exit(0);
+      }, 2000); // 2 second grace period
+    };
+
+    process.on('SIGINT', signalHandler);
+    process.on('SIGTERM', signalHandler);
   }
   
   _createLogEntry(level, message, context = {}) {
@@ -79,69 +90,61 @@ class LoggplattformSDK {
       return;
     }
     
+    // Use batch endpoint if available, otherwise send individually
     const logsToSend = this.logQueue.splice(0, this.batchSize);
     
-    // Send logs individually (could be batched in future)
-    const promises = logsToSend.map(logEntry => this._sendLog(logEntry));
-    
     try {
+      // Try batch endpoint first
+      await this._sendBatchLogs(logsToSend);
+    } catch (batchError) {
+      // Fallback to individual sends if batch fails
+      if (process.env.LOGGPLATTFORM_DEBUG) {
+        console.warn('Loggplattform SDK: Batch send failed, falling back to individual sends:', batchError.message);
+      }
+      const promises = logsToSend.map(logEntry => this._sendLog(logEntry));
       await Promise.allSettled(promises);
-    } catch (error) {
-      // SDK errors should never crash the app
-      console.error('Loggplattform SDK: Failed to flush logs:', error.message);
     }
   }
   
-  flushSync() {
-    if (this.logQueue.length === 0 || !this.apiKey) {
+  async _sendBatchLogs(logEntries) {
+    if (!this.apiKey || logEntries.length === 0) {
       return;
     }
     
-    const logsToSend = [...this.logQueue];
-    this.logQueue = [];
-    
-    // Send synchronously (blocking) - wait for all to complete
-    const promises = [];
-    for (const logEntry of logsToSend) {
-      try {
-        const promise = this._sendLogSync(logEntry);
-        if (promise) {
-          promises.push(promise.catch(error => {
-            // SDK errors should never crash the app
-            if (process.env.LOGGPLATTFORM_DEBUG) {
-              console.error('Loggplattform SDK: Failed to send log:', error.message);
-            }
-          }));
+    try {
+      await axios.post(
+        `${this.apiUrl}/api/logs/batch`,
+        { logs: logEntries },
+        {
+          headers: {
+            'X-API-Key': this.apiKey,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000 // 10 second timeout for batches
         }
-      } catch (error) {
-        // SDK errors should never crash the app
-        if (process.env.LOGGPLATTFORM_DEBUG) {
-          console.error('Loggplattform SDK: Failed to send log:', error.message);
-        }
+      );
+    } catch (error) {
+      // SDK errors should never crash the app
+      if (process.env.LOGGPLATTFORM_DEBUG) {
+        console.error('Loggplattform SDK: Failed to send batch logs:', error.message);
       }
+      throw error; // Re-throw to trigger fallback
     }
-    
-    // Block until all promises complete (with timeout)
-    if (promises.length > 0) {
-      const startTime = Date.now();
-      const timeout = 10000; // 10 second timeout
-      let completed = false;
-      
-      Promise.all(promises).then(() => {
-        completed = true;
-      }).catch(() => {
-        completed = true;
-      });
-      
-      // Synchronously wait for completion using deasync
-      deasync.loopWhile(() => {
-        const elapsed = Date.now() - startTime;
-        if (elapsed > timeout) {
-          return false; // Timeout reached
-        }
-        return !completed; // Continue while not completed
-      });
-    }
+  }
+  
+  /**
+   * Flush logs synchronously (for backwards compatibility)
+   * Note: This is now async internally but returns immediately
+   * For true synchronous behavior, use flush() and await it
+   */
+  flushSync() {
+    // For backwards compatibility, just call async flush
+    // but don't wait for it (non-blocking)
+    this.flush().catch(err => {
+      if (process.env.LOGGPLATTFORM_DEBUG) {
+        console.error('Loggplattform SDK: Error in flushSync:', err.message);
+      }
+    });
   }
   
   async _sendLog(logEntry) {
@@ -170,71 +173,6 @@ class LoggplattformSDK {
     }
   }
   
-  _sendLogSync(logEntry) {
-    if (!this.apiKey) {
-      return Promise.resolve();
-    }
-    
-    try {
-      const https = require('https');
-      const http = require('http');
-      const url = require('url');
-      
-      const parsedUrl = url.parse(this.apiUrl);
-      const client = parsedUrl.protocol === 'https:' ? https : http;
-      
-      const postData = JSON.stringify(logEntry);
-      const options = {
-        hostname: parsedUrl.hostname,
-        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-        path: '/api/logs',
-        method: 'POST',
-        headers: {
-          'X-API-Key': this.apiKey,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData)
-        },
-        timeout: 5000
-      };
-      
-      return new Promise((resolve, reject) => {
-        const req = client.request(options, (res) => {
-          const statusCode = res.statusCode;
-
-          // Consume response data to free up memory / allow connection reuse
-          res.resume();
-
-          if (statusCode >= 200 && statusCode < 300) {
-            // Treat 2xx responses as success
-            resolve();
-          } else {
-            // Treat non-2xx responses as failures
-            const error = new Error(`Request failed with status code ${statusCode}`);
-            error.statusCode = statusCode;
-            reject(error);
-          }
-        });
-        
-        req.on('error', (error) => {
-          reject(error);
-        });
-        
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new Error('Request timeout'));
-        });
-        
-        req.write(postData);
-        req.end();
-      });
-    } catch (error) {
-      // SDK errors should never crash the app
-      if (process.env.LOGGPLATTFORM_DEBUG) {
-        console.error('Loggplattform SDK: Failed to send log:', error.message);
-      }
-      return Promise.resolve(); // Return resolved promise on error
-    }
-  }
   
   info(message, context = {}) {
     this._queueLog(this._createLogEntry('info', message, context));
@@ -256,12 +194,12 @@ class LoggplattformSDK {
     this.correlationId = correlationId;
   }
   
-  destroy() {
+  async destroy() {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
     }
-    this.flushSync();
+    await this.flush();
   }
 }
 

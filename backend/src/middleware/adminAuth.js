@@ -1,3 +1,5 @@
+const { getDatabase } = require('../database');
+
 /**
  * Admin authentication middleware
  * 
@@ -13,7 +15,7 @@
  * RECOMMENDATION: Always set ADMIN_API_KEY to a strong, unique value in production deployments.
  */
 async function authenticateAdmin(req, res, next) {
-  const apiKey = req.headers['x-api-key'] || req.query.api_key;
+  const apiKey = req.headers['x-api-key'];
   const adminApiKey = process.env.ADMIN_API_KEY;
   
   // Check if API key is provided
@@ -27,6 +29,7 @@ async function authenticateAdmin(req, res, next) {
     return next();
   }
   
+  const db = getDatabase();
   db.get('SELECT id, name FROM services WHERE api_key = ?', [apiKey], (err, service) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });

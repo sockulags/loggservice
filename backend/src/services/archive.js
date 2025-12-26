@@ -150,8 +150,14 @@ async function archiveOldLogs(daysOld = 1) {
 
 /**
  * Read archived logs from files for a specific date range and service
+ * 
+ * @param {string} service - Service name
+ * @param {string} startTime - Start time ISO string
+ * @param {string} endTime - End time ISO string  
+ * @param {object} filters - Filters (level, correlationId)
+ * @param {number} maxLogs - Maximum number of logs to return (for performance)
  */
-async function readArchivedLogs(service, startTime, endTime, filters = {}) {
+async function readArchivedLogs(service, startTime, endTime, filters = {}, maxLogs = null) {
   try {
     await ensureArchiveDir();
     
@@ -219,9 +225,20 @@ async function readArchivedLogs(service, startTime, endTime, filters = {}) {
           }
           
           logs.push(log);
+          
+          // Early exit if we've reached the maximum number of logs
+          if (maxLogs && logs.length >= maxLogs) {
+            console.log(`Reached maxLogs limit (${maxLogs}), stopping archive read early`);
+            break;
+          }
         } catch (parseError) {
           console.error(`Failed to parse log line: ${parseError.message}`);
         }
+      }
+      
+      // Break outer loop if we've reached the limit
+      if (maxLogs && logs.length >= maxLogs) {
+        break;
       }
     }
     

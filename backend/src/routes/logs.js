@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
 
-// Custom rate limiter for batch endpoint that accounts for batch size
+// Rate limiter for batch endpoint with lower limit since each request can contain multiple logs
 const batchLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000'),
   // Lower base limit since each request can contain multiple logs
@@ -14,7 +14,6 @@ const batchLimiter = rateLimit({
   message: 'Too many batch log requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  // Custom handler to account for batch size in rate limiting
   handler: (req, res) => {
     res.status(429).json({
       error: 'Too many batch log requests from this IP, please try again later.',
@@ -58,6 +57,23 @@ router.post('/batch', batchLimiter, async (req, res) => {
       if (!validLevels.includes(log.level.toLowerCase())) {
         errors.push({ index: i, error: `Invalid level. Must be one of: ${validLevels.join(', ')}` });
         continue;
+      }
+      // Validate timestamp if provided
+      if (log.timestamp) {
+        const timestampDate = new Date(log.timestamp);
+        if (isNaN(timestampDate.getTime())) {
+          errors.push({ index: i, error: 'Invalid timestamp format. Must be a valid ISO 8601 date string' });
+          continue;
+        }
+        // Check if timestamp is within reasonable bounds (1 year in past to 1 hour in future)
+        const now = Date.now();
+        const oneYearAgo = now - (365 * 24 * 60 * 60 * 1000);
+        const oneHourFromNow = now + (60 * 60 * 1000);
+        const timestampMs = timestampDate.getTime();
+        if (timestampMs < oneYearAgo || timestampMs > oneHourFromNow) {
+          errors.push({ index: i, error: 'Timestamp out of reasonable bounds (must be within 1 year ago to 1 hour in future)' });
+          continue;
+        }
       }
     }
     
@@ -117,10 +133,10 @@ router.post('/batch', batchLimiter, async (req, res) => {
               });
               
               completed++;
-              if (completed === total) {
+              if (completed >= total) {
+                transactionFailed = true; // Set before finalize to prevent race conditions
                 stmt.finalize((finalizeErr) => {
                   if (finalizeErr) {
-                    transactionFailed = true;
                     db.run('ROLLBACK', () => {
                       reject(finalizeErr);
                     });

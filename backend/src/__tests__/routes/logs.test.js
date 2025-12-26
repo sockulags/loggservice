@@ -152,6 +152,59 @@ describe('Log Routes', () => {
         })
         .end(done);
     });
+
+    test('should return validation errors with created: 0', (done) => {
+      request(app)
+        .post('/api/logs/batch')
+        .send({
+          logs: [
+            { level: 'info', message: 'Valid log' },
+            { level: 'invalid', message: 'Invalid level' }
+          ]
+        })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.error).toContain('Validation errors');
+          expect(res.body.created).toBe(0);
+          expect(res.body.errors).toBeInstanceOf(Array);
+          expect(res.body.errors.length).toBeGreaterThan(0);
+        })
+        .end(done);
+    });
+
+    test('should reject batch with invalid timestamp', (done) => {
+      request(app)
+        .post('/api/logs/batch')
+        .send({
+          logs: [
+            { level: 'info', message: 'Log with invalid timestamp', timestamp: 'not-a-date' }
+          ]
+        })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.error).toContain('Validation errors');
+          expect(res.body.created).toBe(0);
+          expect(res.body.errors[0].error).toContain('Invalid timestamp format');
+        })
+        .end(done);
+    });
+
+    test('should reject batch with timestamp out of bounds', (done) => {
+      request(app)
+        .post('/api/logs/batch')
+        .send({
+          logs: [
+            { level: 'info', message: 'Log with future timestamp', timestamp: '2099-01-01T00:00:00.000Z' }
+          ]
+        })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.error).toContain('Validation errors');
+          expect(res.body.created).toBe(0);
+          expect(res.body.errors[0].error).toContain('out of reasonable bounds');
+        })
+        .end(done);
+    });
   });
 
   describe('GET /api/logs', () => {

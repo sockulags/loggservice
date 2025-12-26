@@ -134,15 +134,16 @@ router.post('/batch', batchLimiter, async (req, res) => {
               
               completed++;
               if (completed >= total) {
-                transactionFailed = true; // Set before finalize to prevent race conditions
                 stmt.finalize((finalizeErr) => {
                   if (finalizeErr) {
+                    transactionFailed = true;
                     db.run('ROLLBACK', () => {
                       reject(finalizeErr);
                     });
                   } else {
                     db.run('COMMIT', (commitErr) => {
                       if (commitErr) {
+                        transactionFailed = true;
                         reject(commitErr);
                       } else {
                         resolve();

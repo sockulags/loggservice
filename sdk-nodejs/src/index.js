@@ -38,8 +38,8 @@ class LoggplattformSDK {
       const signalHandler = async () => {
         // Flush all SDK instances
         const flushPromises = Array.from(sdkInstances).map(instance => {
-          // Skip instances that have been destroyed or are already shutting down
-          if (!sdkInstances.has(instance) || instance.shutdownInProgress) {
+          // Skip instances that are already shutting down
+          if (instance.shutdownInProgress) {
             return Promise.resolve();
           }
 

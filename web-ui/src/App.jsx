@@ -15,13 +15,12 @@ function App() {
   });
   const [selectedLog, setSelectedLog] = useState(null);
   const [apiKey, setApiKey] = useState(localStorage.getItem('apiKey') || 'test-api-key-123');
-  const [service, setService] = useState('default-service');
 
   useEffect(() => {
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000); // Refresh every 5 seconds
     return () => clearInterval(interval);
-  }, [filters, apiKey, service]);
+  }, [filters, apiKey]);
 
   const fetchLogs = async () => {
     try {
@@ -47,7 +46,7 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch logs:', error);
       if (error.response?.status === 401) {
-        alert('Ogiltig API-nyckel');
+        alert('Invalid API key');
       }
     } finally {
       setLoading(false);
@@ -88,13 +87,6 @@ function App() {
             value={apiKey}
             onChange={(e) => handleApiKeyChange(e.target.value)}
             className="api-key-input"
-          />
-          <input
-            type="text"
-            placeholder="Tjänst"
-            value={service}
-            onChange={(e) => setService(e.target.value)}
-            className="service-input"
           />
         </div>
       </header>

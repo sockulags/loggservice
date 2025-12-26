@@ -1,17 +1,19 @@
 const request = require('supertest');
 const express = require('express');
 const logRoutes = require('../../routes/logs');
-const { authenticate } = require('../../middleware/auth');
 const { getDatabase } = require('../../database');
 const { readArchivedLogs } = require('../../services/archive');
 
 jest.mock('../../database');
 jest.mock('../../services/archive');
+
+const mockAuthenticate = jest.fn((req, res, next) => {
+  req.service = { id: 'test-id', name: 'test-service' };
+  next();
+});
+
 jest.mock('../../middleware/auth', () => ({
-  authenticate: jest.fn((req, res, next) => {
-    req.service = { id: 'test-id', name: 'test-service' };
-    next();
-  })
+  authenticate: mockAuthenticate
 }));
 
 describe('Log Routes', () => {
@@ -20,6 +22,8 @@ describe('Log Routes', () => {
   beforeEach(() => {
     app = express();
     app.use(express.json());
+    // Apply authentication middleware
+    app.use(mockAuthenticate);
     app.use('/api/logs', logRoutes);
   });
 
@@ -85,16 +89,12 @@ describe('Log Routes', () => {
   describe('POST /api/logs/batch', () => {
     test('should create multiple log entries', (done) => {
       let completed = 0;
-      const totalLogs = 2;
-      const results = [];
       
       const mockStmt = {
         run: jest.fn((params, callback) => {
           completed++;
-          // Simulate successful insert
-          setTimeout(() => {
-            callback(null);
-          }, 10);
+          // Simulate successful insert without time-based delay
+          callback(null);
         }),
         finalize: jest.fn((callback) => {
           callback(null);
@@ -106,12 +106,9 @@ describe('Log Routes', () => {
           callback();
         }),
         run: jest.fn((query, callback) => {
-          if (query === 'BEGIN TRANSACTION') {
-            callback(null);
-          } else if (query === 'COMMIT') {
-            callback(null);
-          } else if (query === 'ROLLBACK') {
-            callback(null);
+          if (query === 'BEGIN TRANSACTION' || query === 'COMMIT' || query === 'ROLLBACK') {
+            // These are called without a callback
+            if (callback) callback(null);
           }
         }),
         prepare: jest.fn(() => mockStmt)
@@ -152,6 +149,59 @@ describe('Log Routes', () => {
         .expect(400)
         .expect((res) => {
           expect(res.body.error).toBe('logs array cannot be empty');
+        })
+        .end(done);
+    });
+
+    test('should return validation errors with created: 0', (done) => {
+      request(app)
+        .post('/api/logs/batch')
+        .send({
+          logs: [
+            { level: 'info', message: 'Valid log' },
+            { level: 'invalid', message: 'Invalid level' }
+          ]
+        })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.error).toContain('Validation errors');
+          expect(res.body.created).toBe(0);
+          expect(res.body.errors).toBeInstanceOf(Array);
+          expect(res.body.errors.length).toBeGreaterThan(0);
+        })
+        .end(done);
+    });
+
+    test('should reject batch with invalid timestamp', (done) => {
+      request(app)
+        .post('/api/logs/batch')
+        .send({
+          logs: [
+            { level: 'info', message: 'Log with invalid timestamp', timestamp: 'not-a-date' }
+          ]
+        })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.error).toContain('Validation errors');
+          expect(res.body.created).toBe(0);
+          expect(res.body.errors[0].error).toContain('Invalid timestamp format');
+        })
+        .end(done);
+    });
+
+    test('should reject batch with timestamp out of bounds', (done) => {
+      request(app)
+        .post('/api/logs/batch')
+        .send({
+          logs: [
+            { level: 'info', message: 'Log with future timestamp', timestamp: '2099-01-01T00:00:00.000Z' }
+          ]
+        })
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.error).toContain('Validation errors');
+          expect(res.body.created).toBe(0);
+          expect(res.body.errors[0].error).toContain('out of reasonable bounds');
         })
         .end(done);
     });

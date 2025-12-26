@@ -11,3 +11,4 @@ data/archives/
 target/
 .idea/
 .vscode/
+coverage/

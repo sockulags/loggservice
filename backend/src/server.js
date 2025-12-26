@@ -14,6 +14,13 @@ const { startScheduler } = require('./services/scheduler');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Validate required environment variables
+if (!process.env.ADMIN_API_KEY) {
+  console.error('ERROR: ADMIN_API_KEY environment variable is required');
+  console.error('Please set ADMIN_API_KEY in your .env file or environment');
+  process.exit(1);
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());

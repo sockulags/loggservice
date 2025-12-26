@@ -291,10 +291,10 @@ När du söker efter loggar (`GET /api/logs`) kombineras automatiskt:
 
 - **Service-isolering:** Varje API-nyckel är knuten till en tjänst. Tjänster kan endast se sina egna loggar.
 - **Autentisering:** Alla API-anrop kräver en giltig API-nyckel.
-- **Admin-autentisering:** Admin-endpoints (`/api/admin/*`) kräver autentisering:
-  - Om `ADMIN_API_KEY` är satt krävs denna nyckel för admin-operationer
-  - Om `ADMIN_API_KEY` inte är satt accepteras vilken giltig service API-nyckel som helst
-  - Rekommenderas att sätta `ADMIN_API_KEY` i produktion
+- **Admin-autentisering:** Admin-endpoints (`/api/admin/*`) kräver en dedikerad `ADMIN_API_KEY`:
+  - Miljövariabeln `ADMIN_API_KEY` måste vara satt för att admin-endpoints ska fungera
+  - Endast den specifika admin-nyckeln ger åtkomst till admin-operationer
+  - Service API-nycklar kan inte användas för admin-endpoints, vilket säkerställer strikt separation mellan tjänst- och adminbehörigheter
 - **SDK-säkerhet:** SDK-fel kraschar aldrig applikationen.
 
 ## 🐳 Docker

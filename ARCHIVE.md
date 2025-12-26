@@ -84,13 +84,15 @@ ARCHIVE_DIR=./data/archives       # Var arkiv sparas
 ### Arkivera nu
 
 ```bash
-curl -X POST http://localhost:3000/api/admin/archive-now
+curl -X POST http://localhost:3000/api/admin/archive-now \
+  -H "X-API-Key: your-admin-api-key"
 ```
 
 ### Arkivera specifik ålder
 
 ```bash
 curl -X POST http://localhost:3000/api/admin/archive \
+  -H "X-API-Key: your-admin-api-key" \
   -H "Content-Type: application/json" \
   -d '{"daysOld": 7}'
 ```
@@ -98,7 +100,8 @@ curl -X POST http://localhost:3000/api/admin/archive \
 ### Rensa gamla arkiv
 
 ```bash
-curl -X POST http://localhost:3000/api/admin/cleanup
+curl -X POST http://localhost:3000/api/admin/cleanup \
+  -H "X-API-Key: your-admin-api-key"
 ```
 
 ## Prestanda
@@ -161,7 +164,8 @@ Antag ~500 bytes per logg:
 2. Kontrollera cron-schemat:
    ```bash
    # Testa manuellt
-   curl -X POST http://localhost:3000/api/admin/archive-now
+   curl -X POST http://localhost:3000/api/admin/archive-now \
+     -H "X-API-Key: your-admin-api-key"
    ```
 
 3. Kontrollera diskutrymme:
@@ -180,6 +184,7 @@ Antag ~500 bytes per logg:
 1. Minska `ARCHIVE_RETENTION_DAYS`
 2. Kör manuell rensning:
    ```bash
-   curl -X POST http://localhost:3000/api/admin/cleanup
+   curl -X POST http://localhost:3000/api/admin/cleanup \
+     -H "X-API-Key: your-admin-api-key"
    ```
 3. Överväg att flytta gamla arkiv till kyla lagring

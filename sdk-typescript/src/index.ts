@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { v4 as uuidv4 } from 'uuid';
+import * as deasync from 'deasync';
 import {
   LogLevel,
   LogContext,
@@ -159,15 +159,49 @@ export class LoggplattformSDK {
     const logsToSend = [...this.logQueue];
     this.logQueue = [];
 
-    // Send synchronously (blocking)
+    // Send synchronously (blocking) - wait for all to complete
+    const promises: Promise<void>[] = [];
     for (const logEntry of logsToSend) {
       try {
-        this.sendLogSync(logEntry);
+        const promise = this.sendLogSync(logEntry);
+        if (promise) {
+          promises.push(promise.catch(error => {
+            // SDK errors should never crash the app
+            if (process.env.LOGGPLATTFORM_DEBUG) {
+              const err = error as Error;
+              console.error('Loggplattform SDK: Failed to send log:', err.message);
+            }
+          }));
+        }
       } catch (error) {
         // SDK errors should never crash the app
-        const err = error as Error;
-        console.error('Loggplattform SDK: Failed to send log:', err.message);
+        if (process.env.LOGGPLATTFORM_DEBUG) {
+          const err = error as Error;
+          console.error('Loggplattform SDK: Failed to send log:', err.message);
+        }
       }
+    }
+
+    // Block until all promises complete (with timeout)
+    if (promises.length > 0) {
+      const startTime = Date.now();
+      const timeout = 10000; // 10 second timeout
+      let completed = false;
+
+      Promise.all(promises).then(() => {
+        completed = true;
+      }).catch(() => {
+        completed = true;
+      });
+
+      // Synchronously wait for completion using deasync
+      deasync.loopWhile(() => {
+        const elapsed = Date.now() - startTime;
+        if (elapsed > timeout) {
+          return false; // Timeout reached
+        }
+        return !completed; // Continue while not completed
+      });
     }
   }
 
@@ -201,8 +235,9 @@ export class LoggplattformSDK {
 
   /**
    * Send a single log entry synchronously (blocking)
+   * Returns a Promise that resolves when the request completes
    */
-  private sendLogSync(logEntry: LogEntry): void {
+  private sendLogSync(logEntry: LogEntry): Promise<void> | void {
     if (!this.apiKey) {
       return;
     }
@@ -252,6 +287,7 @@ export class LoggplattformSDK {
         const err = error as Error;
         console.error('Loggplattform SDK: Failed to send log:', err.message);
       }
+      return Promise.resolve(); // Return resolved promise on error
     }
   }
 

@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const { getDatabase } = require('../database');
+const logger = require('../logger');
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ router.post('/', async (req, res) => {
           if (err.message.includes('UNIQUE constraint')) {
             return res.status(409).json({ error: 'Service name already exists' });
           }
-          console.error('Database error:', err);
+          logger.error({ err }, 'Database error creating service');
           return res.status(500).json({ error: 'Failed to create service' });
         }
         
@@ -39,7 +40,7 @@ router.post('/', async (req, res) => {
       }
     );
   } catch (error) {
-    console.error('Error creating service:', error);
+    logger.error({ err: error }, 'Error creating service');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -54,7 +55,7 @@ router.get('/', async (req, res) => {
       [],
       (err, rows) => {
         if (err) {
-          console.error('Database error:', err);
+          logger.error({ err }, 'Database error querying services');
           return res.status(500).json({ error: 'Failed to query services' });
         }
         
@@ -62,7 +63,7 @@ router.get('/', async (req, res) => {
       }
     );
   } catch (error) {
-    console.error('Error querying services:', error);
+    logger.error({ err: error }, 'Error querying services');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

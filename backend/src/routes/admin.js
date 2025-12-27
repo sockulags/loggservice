@@ -1,6 +1,7 @@
 const express = require('express');
 const { archiveOldLogs, cleanupOldArchives } = require('../services/archive');
 const { runArchiveNow } = require('../services/scheduler');
+const logger = require('../logger');
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ router.post('/archive', async (req, res) => {
       message: `Archived ${count} logs` 
     });
   } catch (error) {
-    console.error('Archive error:', error);
+    logger.error({ err: error }, 'Archive error');
     res.status(500).json({ error: 'Failed to archive logs' });
   }
 });
@@ -30,7 +31,7 @@ router.post('/archive-now', async (req, res) => {
       message: `Archived ${count} logs` 
     });
   } catch (error) {
-    console.error('Archive error:', error);
+    logger.error({ err: error }, 'Archive error');
     res.status(500).json({ error: 'Failed to archive logs' });
   }
 });
@@ -45,7 +46,7 @@ router.post('/cleanup', async (req, res) => {
       message: `Deleted ${count} old archive directories` 
     });
   } catch (error) {
-    console.error('Cleanup error:', error);
+    logger.error({ err: error }, 'Cleanup error');
     res.status(500).json({ error: 'Failed to cleanup archives' });
   }
 });

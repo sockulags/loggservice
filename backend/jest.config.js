@@ -8,10 +8,18 @@ module.exports = {
   ],
   coverageThreshold: {
     global: {
-      branches: 40,
-      functions: 25,
-      lines: 35,
-      statements: 35
+      branches: 50,
+      functions: 45,
+      lines: 55,
+      statements: 55
     }
+  },
+  coverageReporters: ['text', 'lcov', 'html'],
+  // Transform uuid ESM module to CommonJS
+  transformIgnorePatterns: [
+    'node_modules/(?!(uuid)/)'
+  ],
+  transform: {
+    '^.+\\.js$': 'babel-jest'
   }
 };

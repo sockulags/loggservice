@@ -58,9 +58,21 @@ jobs:
         working-directory: ./web-ui
         run: npm ci
       
+      - name: Run tests
+        working-directory: ./web-ui
+        run: npm run test:coverage
+      
       - name: Build
         working-directory: ./web-ui
         run: npm run build
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        if: always()
+        with:
+          directory: ./web-ui/coverage
+          flags: web-ui
+          name: web-ui-coverage
 
   lint-backend:
     name: Lint Backend

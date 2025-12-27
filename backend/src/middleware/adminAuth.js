@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const logger = require('../logger');
 
 /**
  * Admin authentication middleware
@@ -17,7 +18,7 @@ async function authenticateAdmin(req, res, next) {
   
   // Check if admin key is configured
   if (!adminApiKey) {
-    console.error('ADMIN_API_KEY environment variable is not set');
+    logger.error('ADMIN_API_KEY environment variable is not set');
     return res.status(500).json({ error: 'Server configuration error' });
   }
   

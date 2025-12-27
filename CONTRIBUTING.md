@@ -22,7 +22,13 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 3. Install dependencies:
    ```bash
+   # Root (installs Husky pre-commit hooks)
+   npm install
+   
+   # Backend
    cd backend && npm install
+   
+   # Web UI
    cd ../web-ui && npm install
    ```
 
@@ -81,6 +87,15 @@ chore(deps): update helmet to v7
 - **Backend**: ESLint configured (`npm run lint`)
 - Run linting before committing: `npm run lint`
 - Fix auto-fixable issues: `npm run lint:fix`
+
+### Pre-commit Hooks
+
+This project uses [Husky](https://typicode.github.io/husky/) and [lint-staged](https://github.com/okonet/lint-staged) to enforce code quality:
+
+- **pre-commit**: Automatically runs ESLint on staged `.js` files in `backend/src/`
+- **commit-msg**: Validates commit messages follow Conventional Commits format
+
+The hooks are installed automatically when you run `npm install` in the root directory.
 
 ### Testing
 

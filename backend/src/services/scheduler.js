@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const { archiveOldLogs, cleanupOldArchives } = require('./archive');
+const logger = require('../logger');
 
 const ARCHIVE_SCHEDULE = process.env.ARCHIVE_SCHEDULE || '0 2 * * *'; // Daily at 2 AM
 const CLEANUP_SCHEDULE = process.env.CLEANUP_SCHEDULE || '0 3 * * *'; // Daily at 3 AM
@@ -12,17 +13,19 @@ let cleanupTask = null;
  * Start scheduled archive and cleanup jobs
  */
 function startScheduler() {
-  console.log('Starting archive scheduler...');
-  console.log(`Archive schedule: ${ARCHIVE_SCHEDULE} (${ARCHIVE_DAYS_OLD} days old)`);
-  console.log(`Cleanup schedule: ${CLEANUP_SCHEDULE}`);
+  logger.info({
+    archiveSchedule: ARCHIVE_SCHEDULE,
+    cleanupSchedule: CLEANUP_SCHEDULE,
+    archiveDaysOld: ARCHIVE_DAYS_OLD
+  }, 'Starting archive scheduler');
   
   // Schedule daily archive job
   archiveTask = cron.schedule(ARCHIVE_SCHEDULE, async () => {
     try {
-      console.log('Running scheduled archive job...');
+      logger.info('Running scheduled archive job');
       await archiveOldLogs(ARCHIVE_DAYS_OLD);
     } catch (error) {
-      console.error('Scheduled archive job failed:', error);
+      logger.error({ err: error }, 'Scheduled archive job failed');
     }
   }, {
     scheduled: true,
@@ -32,17 +35,17 @@ function startScheduler() {
   // Schedule daily cleanup job
   cleanupTask = cron.schedule(CLEANUP_SCHEDULE, async () => {
     try {
-      console.log('Running scheduled cleanup job...');
+      logger.info('Running scheduled cleanup job');
       await cleanupOldArchives();
     } catch (error) {
-      console.error('Scheduled cleanup job failed:', error);
+      logger.error({ err: error }, 'Scheduled cleanup job failed');
     }
   }, {
     scheduled: true,
     timezone: 'UTC'
   });
   
-  console.log('Scheduler started successfully');
+  logger.info('Scheduler started successfully');
 }
 
 /**
@@ -57,7 +60,7 @@ function stopScheduler() {
     cleanupTask.stop();
     cleanupTask = null;
   }
-  console.log('Scheduler stopped');
+  logger.info('Scheduler stopped');
 }
 
 /**
@@ -65,12 +68,12 @@ function stopScheduler() {
  */
 async function runArchiveNow() {
   try {
-    console.log('Running manual archive job...');
+    logger.info('Running manual archive job');
     const count = await archiveOldLogs(ARCHIVE_DAYS_OLD);
-    console.log(`Manual archive complete: ${count} logs archived`);
+    logger.info({ count }, 'Manual archive complete');
     return count;
   } catch (error) {
-    console.error('Manual archive job failed:', error);
+    logger.error({ err: error }, 'Manual archive job failed');
     throw error;
   }
 }

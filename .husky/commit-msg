@@ -1,0 +1,11 @@
+#!/bin/sh
+# Validate commit messages follow Conventional Commits format
+if ! head -1 "$1" | grep -qE "^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .{1,72}"; then
+  echo "❌ Commit message must follow Conventional Commits format:"
+  echo "   <type>(<scope>): <description>"
+  echo ""
+  echo "   Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+  echo "   Example: feat(auth): add JWT validation"
+  echo "   Example: fix(logs): handle empty batch request"
+  exit 1
+fi

@@ -3,6 +3,7 @@ const fsSync = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { getDatabase } = require('../database');
+const logger = require('../logger');
 
 const ARCHIVE_DIR = process.env.ARCHIVE_DIR || path.join(__dirname, '../../data/archives');
 const ARCHIVE_RETENTION_DAYS = parseInt(process.env.ARCHIVE_RETENTION_DAYS || '30');
@@ -39,7 +40,7 @@ async function archiveOldLogs(daysOld = 1) {
     
     const cutoffDateStr = cutoffDate.toISOString();
     
-    console.log(`Archiving logs older than ${cutoffDateStr}...`);
+    logger.info({ cutoffDate: cutoffDateStr }, 'Archiving old logs');
     
     // Get all services
     const services = await new Promise((resolve, reject) => {
@@ -137,14 +138,14 @@ async function archiveOldLogs(daysOld = 1) {
         });
         
         totalArchived += logs.length;
-        console.log(`Archived ${logs.length} logs for ${service} on ${dateStr}`);
+        logger.debug({ service, dateStr, count: logs.length }, 'Archived logs for service');
       }
     }
     
-    console.log(`Archive complete: ${totalArchived} logs archived`);
+    logger.info({ totalArchived }, 'Archive complete');
     return totalArchived;
   } catch (error) {
-    console.error('Archive error:', error);
+    logger.error({ err: error }, 'Archive error');
     throw error;
   }
 }
@@ -189,7 +190,7 @@ async function readArchivedLogs(service, startTime, endTime, filters = {}, maxLo
       const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB limit
       
       if (stats.size > MAX_FILE_SIZE) {
-        console.warn(`Archive file ${archivePath} is too large (${stats.size} bytes), skipping`);
+        logger.warn({ archivePath, size: stats.size }, 'Archive file too large, skipping');
         continue;
       }
       
@@ -238,7 +239,7 @@ async function readArchivedLogs(service, startTime, endTime, filters = {}, maxLo
               rl.close();
             }
           } catch (parseError) {
-            console.error(`Failed to parse log line: ${parseError.message}`);
+            logger.warn({ err: parseError }, 'Failed to parse log line');
           }
         });
         
@@ -267,7 +268,7 @@ async function readArchivedLogs(service, startTime, endTime, filters = {}, maxLo
     
     return logs;
   } catch (error) {
-    console.error('Error reading archived logs:', error);
+    logger.error({ err: error }, 'Error reading archived logs');
     return [];
   }
 }
@@ -292,18 +293,18 @@ async function cleanupOldArchives() {
           const dirPath = path.join(ARCHIVE_DIR, entry.name);
           await fs.rm(dirPath, { recursive: true, force: true });
           deletedCount++;
-          console.log(`Deleted old archive directory: ${entry.name}`);
+          logger.debug({ directory: entry.name }, 'Deleted old archive directory');
         }
       }
     }
     
     if (deletedCount > 0) {
-      console.log(`Cleanup complete: ${deletedCount} old archive directories deleted`);
+      logger.info({ deletedCount }, 'Cleanup complete');
     }
     
     return deletedCount;
   } catch (error) {
-    console.error('Cleanup error:', error);
+    logger.error({ err: error }, 'Cleanup error');
     throw error;
   }
 }

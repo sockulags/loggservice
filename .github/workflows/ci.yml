@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -33,7 +33,7 @@ jobs:
           DB_PATH: ./test-data/logs.db
       
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         if: always()
         with:
           file: ./backend/coverage/coverage-final.json
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -96,7 +96,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: Build backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./backend
           push: false
@@ -105,7 +105,7 @@ jobs:
           cache-to: type=gha,mode=max
       
       - name: Build web-ui image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./web-ui
           push: false

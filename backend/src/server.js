@@ -3,8 +3,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
+const pinoHttp = require('pino-http');
 require('dotenv').config();
 
+const logger = require('./logger');
 const { initDatabase } = require('./database');
 const { authenticate } = require('./middleware/auth');
 const { authenticateAdmin } = require('./middleware/adminAuth');
@@ -18,8 +20,7 @@ const PORT = process.env.PORT || 3000;
 
 // Validate required environment variables
 if (!process.env.ADMIN_API_KEY) {
-  console.error('ERROR: ADMIN_API_KEY environment variable is required');
-  console.error('Please set ADMIN_API_KEY in your .env file or environment');
+  logger.fatal('ADMIN_API_KEY environment variable is required. Please set it in your .env file or environment');
   process.exit(1);
 }
 
@@ -92,6 +93,14 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// HTTP request logging (skip health checks to reduce noise)
+app.use(pinoHttp({
+  logger,
+  autoLogging: {
+    ignore: (req) => req.url === '/health'
+  }
+}));
+
 // Middleware with body size limits to prevent DoS
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -150,9 +159,9 @@ initDatabase().then(() => {
   startScheduler();
   
   app.listen(PORT, () => {
-    console.log(`Logging platform backend running on port ${PORT}`);
+    logger.info({ port: PORT }, 'Logging platform backend started');
   });
 }).catch(err => {
-  console.error('Failed to initialize database:', err);
+  logger.fatal({ err }, 'Failed to initialize database');
   process.exit(1);
 });

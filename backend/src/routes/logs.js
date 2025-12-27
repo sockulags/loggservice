@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const { getDatabase } = require('../database');
 const { readArchivedLogs } = require('../services/archive');
 const rateLimit = require('express-rate-limit');
+const logger = require('../logger');
 
 const router = express.Router();
 
@@ -163,7 +164,7 @@ router.post('/batch', batchLimiter, async (req, res) => {
       logs: results
     });
   } catch (error) {
-    console.error('Error creating batch logs:', error);
+    logger.error({ err: error }, 'Error creating batch logs');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -197,7 +198,7 @@ router.post('/', async (req, res) => {
       [logId, timestamp, level.toLowerCase(), service, message, contextJson, correlation_id || null],
       function(err) {
         if (err) {
-          console.error('Database error:', err);
+          logger.error({ err }, 'Database error saving log');
           return res.status(500).json({ error: 'Failed to save log' });
         }
         
@@ -213,7 +214,7 @@ router.post('/', async (req, res) => {
       }
     );
   } catch (error) {
-    console.error('Error creating log:', error);
+    logger.error({ err: error }, 'Error creating log');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -281,7 +282,7 @@ router.get('/', async (req, res) => {
               try {
                 parsedContext = JSON.parse(row.context);
               } catch (parseError) {
-                console.error('Failed to parse log context JSON for log id:', row.id, parseError);
+                logger.warn({ logId: row.id, err: parseError }, 'Failed to parse log context JSON');
                 parsedContext = null;
               }
             }
@@ -352,7 +353,7 @@ router.get('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error querying logs:', error);
+    logger.error({ err: error }, 'Error querying logs');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -369,7 +370,7 @@ router.get('/:id', async (req, res) => {
       [id, req.service.name],
       (err, row) => {
         if (err) {
-          console.error('Database error:', err);
+          logger.error({ err }, 'Database error querying log');
           return res.status(500).json({ error: 'Failed to query log' });
         }
         
@@ -390,7 +391,7 @@ router.get('/:id', async (req, res) => {
       }
     );
   } catch (error) {
-    console.error('Error querying log:', error);
+    logger.error({ err: error }, 'Error querying log');
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Default configuration using SQLite
+# For PostgreSQL, use: docker-compose -f docker-compose.yml -f docker-compose.postgres.yml up
+
 services:
   backend:
     build:
@@ -7,13 +10,16 @@ services:
       dockerfile: Dockerfile
     container_name: loggplattform-backend
     ports:
-      - "3000:3000"
+      - "${BACKEND_PORT:-3001}:3000"
     environment:
       - PORT=3000
       - DB_PATH=/app/data/logs.db
       # REQUIRED: ADMIN_API_KEY must be set - no default value for security
       # Generate a secure random key: openssl rand -hex 32
       - ADMIN_API_KEY=${ADMIN_API_KEY:?ADMIN_API_KEY environment variable is required}
+      # Optional: PostgreSQL connection string (leave empty for SQLite)
+      - DATABASE_URL=${DATABASE_URL:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:5173}
     volumes:
       - backend-data:/app/data
     restart: unless-stopped
@@ -27,9 +33,11 @@ services:
     build:
       context: ./web-ui
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:${BACKEND_PORT:-3001}}
     container_name: loggplattform-web-ui
     ports:
-      - "8080:80"
+      - "${WEBUI_PORT:-8080}:80"
     depends_on:
       - backend
     restart: unless-stopped

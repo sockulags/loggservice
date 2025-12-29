@@ -1,11 +1,14 @@
 const request = require('supertest');
 const express = require('express');
 const logRoutes = require('../../routes/logs');
-const { getDatabase } = require('../../database');
+const { getDatabase, getDatabaseType } = require('../../database');
 const { readArchivedLogs } = require('../../services/archive');
 
 jest.mock('../../database');
 jest.mock('../../services/archive');
+
+// Default to SQLite for tests
+getDatabaseType.mockReturnValue('sqlite');
 
 const mockAuthenticate = jest.fn((req, res, next) => {
   req.service = { id: 'test-id', name: 'test-service' };

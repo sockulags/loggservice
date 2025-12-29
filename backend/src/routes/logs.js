@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { getDatabase } = require('../database');
+const { getDatabase, getDatabaseType } = require('../database');
 const { readArchivedLogs } = require('../services/archive');
 const rateLimit = require('express-rate-limit');
 const logger = require('../logger');
@@ -23,6 +23,133 @@ const batchLimiter = rateLimit({
   }
 });
 
+/**
+ * Insert batch logs for PostgreSQL
+ */
+async function insertBatchPostgres(db, logs, service) {
+  const { Pool } = require('pg');
+  const results = [];
+  
+  // Get pool from database URL
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+  
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    for (const log of logs) {
+      const logId = uuidv4();
+      const timestamp = log.timestamp || new Date().toISOString();
+      const contextJson = log.context ? JSON.stringify(log.context) : null;
+      
+      await client.query(
+        `INSERT INTO logs (id, timestamp, level, service, message, context, correlation_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [logId, timestamp, log.level.toLowerCase(), service, log.message, contextJson, log.correlation_id || null]
+      );
+      
+      results.push({
+        id: logId,
+        timestamp,
+        level: log.level.toLowerCase(),
+        service,
+        message: log.message,
+        context: log.context,
+        correlation_id: log.correlation_id || null
+      });
+    }
+    
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+  
+  return results;
+}
+
+/**
+ * Insert batch logs for SQLite
+ */
+function insertBatchSqlite(db, logs, service) {
+  return new Promise((resolve, reject) => {
+    const results = [];
+    let transactionFailed = false;
+    
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      
+      const stmt = db.prepare(
+        `INSERT INTO logs (id, timestamp, level, service, message, context, correlation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      );
+      
+      let completed = 0;
+      const total = logs.length;
+      
+      for (const log of logs) {
+        const logId = uuidv4();
+        const timestamp = log.timestamp || new Date().toISOString();
+        const contextJson = log.context ? JSON.stringify(log.context) : null;
+        
+        stmt.run(
+          [logId, timestamp, log.level.toLowerCase(), service, log.message, contextJson, log.correlation_id || null],
+          function(err) {
+            if (transactionFailed) {
+              return;
+            }
+            
+            if (err) {
+              transactionFailed = true;
+              db.run('ROLLBACK', () => {
+                reject(err);
+              });
+              return;
+            }
+            
+            results.push({
+              id: logId,
+              timestamp,
+              level: log.level.toLowerCase(),
+              service,
+              message: log.message,
+              context: log.context,
+              correlation_id: log.correlation_id || null
+            });
+            
+            completed++;
+            if (completed >= total) {
+              stmt.finalize((finalizeErr) => {
+                if (finalizeErr) {
+                  transactionFailed = true;
+                  db.run('ROLLBACK', () => {
+                    reject(finalizeErr);
+                  });
+                } else {
+                  db.run('COMMIT', (commitErr) => {
+                    if (commitErr) {
+                      transactionFailed = true;
+                      reject(commitErr);
+                    } else {
+                      resolve(results);
+                    }
+                  });
+                }
+              });
+            }
+          }
+        );
+      }
+    });
+  });
+}
+
 // POST /api/logs/batch - Create multiple log entries at once
 router.post('/batch', batchLimiter, async (req, res) => {
   try {
@@ -44,8 +171,6 @@ router.post('/batch', batchLimiter, async (req, res) => {
     }
     
     const validLevels = ['info', 'warn', 'error', 'debug'];
-    const db = getDatabase();
-    const results = [];
     const errors = [];
     
     // Validate all logs first
@@ -86,78 +211,16 @@ router.post('/batch', batchLimiter, async (req, res) => {
       });
     }
     
-    // Insert all logs in a transaction
-    await new Promise((resolve, reject) => {
-      let transactionFailed = false; // Track if transaction has already failed
-      
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-        
-        const stmt = db.prepare(
-          `INSERT INTO logs (id, timestamp, level, service, message, context, correlation_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        );
-        
-        let completed = 0;
-        const total = logs.length;
-        
-        for (const log of logs) {
-          const logId = uuidv4();
-          // Use provided timestamp if available, otherwise use current time
-          const timestamp = log.timestamp || new Date().toISOString();
-          const contextJson = log.context ? JSON.stringify(log.context) : null;
-          
-          stmt.run(
-            [logId, timestamp, log.level.toLowerCase(), service, log.message, contextJson, log.correlation_id || null],
-            function(err) {
-              // Skip processing if transaction already failed
-              if (transactionFailed) {
-                return;
-              }
-              
-              if (err) {
-                transactionFailed = true;
-                db.run('ROLLBACK', () => {
-                  reject(err);
-                });
-                return;
-              }
-              
-              results.push({
-                id: logId,
-                timestamp,
-                level: log.level.toLowerCase(),
-                service,
-                message: log.message,
-                context: log.context,
-                correlation_id: log.correlation_id || null
-              });
-              
-              completed++;
-              if (completed >= total) {
-                stmt.finalize((finalizeErr) => {
-                  if (finalizeErr) {
-                    transactionFailed = true;
-                    db.run('ROLLBACK', () => {
-                      reject(finalizeErr);
-                    });
-                  } else {
-                    db.run('COMMIT', (commitErr) => {
-                      if (commitErr) {
-                        transactionFailed = true;
-                        reject(commitErr);
-                      } else {
-                        resolve();
-                      }
-                    });
-                  }
-                });
-              }
-            }
-          );
-        }
-      });
-    });
+    // Insert logs based on database type
+    const db = getDatabase();
+    const dbType = getDatabaseType();
+    
+    let results;
+    if (dbType === 'postgres') {
+      results = await insertBatchPostgres(db, logs, service);
+    } else {
+      results = await insertBatchSqlite(db, logs, service);
+    }
     
     res.status(201).json({
       created: results.length,

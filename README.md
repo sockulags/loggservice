@@ -4,6 +4,8 @@ Central logginsamling och visning för flera tjänster och språk, via enkla SDK
 
 ## 🚀 Snabbstart (< 5 minuter)
 
+> 📖 **För en komplett steg-för-steg guide, se [SETUP.md](SETUP.md)**
+
 ### Förutsättningar
 
 - Docker och Docker Compose installerat
@@ -17,8 +19,17 @@ Central logginsamling och visning för flera tjänster och språk, via enkla SDK
    cd loggplattform
    ```
 
-2. **Starta alla tjänster:**
+2. **Konfigurera miljövariabler:**
    ```bash
+   cp .env.example .env
+   # Redigera .env och sätt ADMIN_API_KEY
+   # eller generera en automatiskt:
+   echo "ADMIN_API_KEY=$(openssl rand -hex 32)" >> .env
+   ```
+
+3. **Starta alla tjänster:**
+   ```bash
+   export $(grep -v '^#' .env | xargs)
    docker-compose up -d
    ```
    
@@ -27,10 +38,12 @@ Central logginsamling och visning för flera tjänster och språk, via enkla SDK
    ./start.sh
    ```
 
-3. **Öppna webbläsaren:**
+4. **Öppna webbläsaren:**
    ```
    http://localhost:8080
    ```
+   
+   API:t körs på port 3001 (konfigurerbart via BACKEND_PORT i .env)
 
 4. **Testa med Node.js SDK:**
    ```bash
@@ -64,13 +77,13 @@ Om du vill köra tjänsterna lokalt utan Docker:
    ```
    http://localhost:5173  # Dev-server
    # eller
-   http://localhost:3000  # Om backend serverar byggda filer
+   http://localhost:3001  # Om backend serverar byggda filer
    ```
 
 ## 🧱 Komponenter
 
 ### Backend Service
-- **Port:** 3000
+- **Port:** 3001 (konfigurerbart via `BACKEND_PORT`)
 - **API:** REST API på `/api/logs`
 - **Databas:** SQLite (append-only)
 - **Autentisering:** API-nyckel via `X-API-Key` header
@@ -93,7 +106,7 @@ Om du vill köra tjänsterna lokalt utan Docker:
 ### Skapa en tjänst och få API-nyckel
 
 ```bash
-curl -X POST http://localhost:3000/api/services \
+curl -X POST http://localhost:3001/api/services \
   -H "Content-Type: application/json" \
   -d '{"name": "my-service"}'
 ```
@@ -103,7 +116,7 @@ Svaret innehåller en `api_key` som du använder för att skicka loggar.
 ### Skicka loggar via API
 
 ```bash
-curl -X POST http://localhost:3000/api/logs \
+curl -X POST http://localhost:3001/api/logs \
   -H "X-API-Key: your-api-key-here" \
   -H "Content-Type: application/json" \
   -d '{
@@ -120,7 +133,7 @@ curl -X POST http://localhost:3000/api/logs \
 const LoggplattformSDK = require('./sdk-nodejs/src/index.js');
 
 const logger = new LoggplattformSDK({
-  apiUrl: 'http://localhost:3000',
+  apiUrl: 'http://localhost:3001',
   apiKey: 'your-api-key-here',
   service: 'my-service',
   environment: 'production'
@@ -138,7 +151,7 @@ logger.debug('Processing request', { userId: 123 });
 import { LoggplattformSDK } from './sdk-typescript/src/index';
 
 const logger = new LoggplattformSDK({
-  apiUrl: 'http://localhost:3000',
+  apiUrl: 'http://localhost:3001',
   apiKey: 'your-api-key-here',
   service: 'my-service',
   environment: 'production'
@@ -156,7 +169,7 @@ logger.debug('Processing request', { userId: 123 });
 import com.loggplattform.sdk.LoggplattformSDK;
 
 LoggplattformSDK logger = new LoggplattformSDK.Builder()
-    .apiUrl("http://localhost:3000")
+    .apiUrl("http://localhost:3001")
     .apiKey("your-api-key-here")
     .service("my-service")
     .environment("production")
@@ -207,7 +220,7 @@ Hämta loggar med filtrering.
 
 **Exempel:**
 ```bash
-curl "http://localhost:3000/api/logs?level=error&limit=50" \
+curl "http://localhost:3001/api/logs?level=error&limit=50" \
   -H "X-API-Key: your-api-key-here"
 ```
 
@@ -262,17 +275,17 @@ CLEANUP_SCHEDULE=0 3 * * *        # Rensning (dagligen kl 03:00 UTC)
 **Manuell arkivering:**
 ```bash
 # Arkivera loggar äldre än 1 dag
-curl -X POST http://localhost:3000/api/admin/archive \
+curl -X POST http://localhost:3001/api/admin/archive \
   -H "X-API-Key: your-api-key-here" \
   -H "Content-Type: application/json" \
   -d '{"daysOld": 1}'
 
 # Kör arkivering direkt
-curl -X POST http://localhost:3000/api/admin/archive-now \
+curl -X POST http://localhost:3001/api/admin/archive-now \
   -H "X-API-Key: your-api-key-here"
 
 # Rensa gamla arkiv
-curl -X POST http://localhost:3000/api/admin/cleanup \
+curl -X POST http://localhost:3001/api/admin/cleanup \
   -H "X-API-Key: your-api-key-here"
 ```
 
@@ -388,12 +401,12 @@ npm test
 
 ```bash
 # Skapa en tjänst
-curl -X POST http://localhost:3000/api/services \
+curl -X POST http://localhost:3001/api/services \
   -H "Content-Type: application/json" \
   -d '{"name": "test-service"}'
 
 # Skicka en logg (använd API-nyckeln från ovan)
-curl -X POST http://localhost:3000/api/logs \
+curl -X POST http://localhost:3001/api/logs \
   -H "X-API-Key: test-api-key-123" \
   -H "Content-Type: application/json" \
   -d '{
@@ -403,7 +416,7 @@ curl -X POST http://localhost:3000/api/logs \
   }'
 
 # Hämta loggar
-curl "http://localhost:3000/api/logs" \
+curl "http://localhost:3001/api/logs" \
   -H "X-API-Key: test-api-key-123"
 ```
 

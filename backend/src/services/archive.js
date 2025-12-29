@@ -2,7 +2,7 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { getDatabase } = require('../database');
+const { getDatabase, getDatabaseType } = require('../database');
 const logger = require('../logger');
 
 const ARCHIVE_DIR = process.env.ARCHIVE_DIR || path.join(__dirname, '../../data/archives');
@@ -26,6 +26,67 @@ function getArchiveFilePath(date, service) {
 }
 
 /**
+ * Delete logs from PostgreSQL by IDs
+ */
+async function deleteLogsPostgres(logIds) {
+  const { Pool } = require('pg');
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Delete in batches to avoid query too long
+    const batchSize = 100;
+    for (let i = 0; i < logIds.length; i += batchSize) {
+      const batch = logIds.slice(i, i + batchSize);
+      const placeholders = batch.map((_, idx) => `$${idx + 1}`).join(',');
+      await client.query(`DELETE FROM logs WHERE id IN (${placeholders})`, batch);
+    }
+    
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+/**
+ * Delete logs from SQLite by IDs
+ */
+function deleteLogsSqlite(db, logIds) {
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      const stmt = db.prepare('DELETE FROM logs WHERE id = ?');
+
+      for (const id of logIds) {
+        stmt.run(id);
+      }
+
+      stmt.finalize(err => {
+        if (err) {
+          db.run('ROLLBACK', () => reject(err));
+        } else {
+          db.run('COMMIT', commitErr => {
+            if (commitErr) {
+              reject(commitErr);
+            } else {
+              resolve();
+            }
+          });
+        }
+      });
+    });
+  });
+}
+
+/**
  * Archive logs older than specified days
  * Moves logs from database to JSONL files (one file per service per day)
  */
@@ -34,6 +95,7 @@ async function archiveOldLogs(daysOld = 1) {
     await ensureArchiveDir();
     
     const db = getDatabase();
+    const dbType = getDatabaseType();
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
     cutoffDate.setHours(0, 0, 0, 0); // Start of day
@@ -83,13 +145,22 @@ async function archiveOldLogs(daysOld = 1) {
           logsByDate[dateStr] = [];
         }
         
+        let parsedContext = null;
+        if (log.context) {
+          try {
+            parsedContext = JSON.parse(log.context);
+          } catch {
+            parsedContext = null;
+          }
+        }
+        
         logsByDate[dateStr].push({
           id: log.id,
           timestamp: log.timestamp,
           level: log.level,
           service: log.service,
           message: log.message,
-          context: log.context ? JSON.parse(log.context) : null,
+          context: parsedContext,
           correlation_id: log.correlation_id,
           created_at: log.created_at
         });
@@ -111,31 +182,12 @@ async function archiveOldLogs(daysOld = 1) {
         
         // Delete archived logs from database
         const logIds = logs.map(log => log.id);
-
-        await new Promise((resolve, reject) => {
-          db.serialize(() => {
-            db.run('BEGIN TRANSACTION');
-            const stmt = db.prepare('DELETE FROM logs WHERE id = ?');
-
-            for (const id of logIds) {
-              stmt.run(id);
-            }
-
-            stmt.finalize(err => {
-              if (err) {
-                db.run('ROLLBACK', () => reject(err));
-              } else {
-                db.run('COMMIT', commitErr => {
-                  if (commitErr) {
-                    reject(commitErr);
-                  } else {
-                    resolve();
-                  }
-                });
-              }
-            });
-          });
-        });
+        
+        if (dbType === 'postgres') {
+          await deleteLogsPostgres(logIds);
+        } else {
+          await deleteLogsSqlite(db, logIds);
+        }
         
         totalArchived += logs.length;
         logger.debug({ service, dateStr, count: logs.length }, 'Archived logs for service');

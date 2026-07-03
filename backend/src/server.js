@@ -146,9 +146,11 @@ app.use('/api/logs', authenticate, logLimiter, logRoutes);
 app.use('/api/admin', authenticateAdmin, adminRoutes);
 
 // Serve web UI for all other routes (if built)
+// Express 5 (path-to-regexp v8) no longer accepts a bare '*' path,
+// so use the named wildcard syntax for the SPA catch-all.
 const webUiIndexPath = path.join(__dirname, '../../web-ui/dist/index.html');
 if (require('fs').existsSync(webUiIndexPath)) {
-  app.get('*', (req, res) => {
+  app.get('/{*splat}', (req, res) => {
     res.sendFile(webUiIndexPath);
   });
 }

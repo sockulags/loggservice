@@ -123,9 +123,26 @@ Skapar en ny SDK-instans.
 - `logger.error(message, context?)` - Skicka fel
 - `logger.debug(message, context?)` - Skicka debug-logg
 - `logger.setCorrelationId(id)` - Sätt korrelations-ID
-- `logger.flush()` - Skicka alla väntande loggar asynkront
-- `logger.flushSync()` - Skicka alla väntande loggar synkront
-- `logger.destroy()` - Stäng SDK och skicka alla väntande loggar
+- `logger.flush()` - Skicka alla väntande loggar asynkront (batch med fallback till enskilda anrop)
+- `logger.flushSync()` - Trigga en asynkron flush utan att vänta (fire-and-forget)
+- `await logger.destroy()` - Stäng SDK:n (stoppa timers) och skicka alla väntande loggar
+
+### Avstängning
+
+SDK:n registrerar inga processhanterare och anropar aldrig `process.exit()`.
+Flusha väntande loggar själv när applikationen stängs av:
+
+```typescript
+await logger.destroy();
+```
+
+Alternativt kan du valfritt registrera SIGINT/SIGTERM-hanterare som flushar
+alla SDK-instanser innan processen avslutas (signalen skickas vidare efter
+flush, `process.exit()` anropas aldrig):
+
+```typescript
+LoggplattformSDK.registerShutdownHandlers();
+```
 
 ## TypeScript-typer
 

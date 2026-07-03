@@ -29,9 +29,8 @@ console.log('✓ Sent error log');
 logger.debug('Test debug message', { test: true, step: 4, details: 'Debug information' });
 console.log('✓ Sent debug log');
 
-// Wait a bit for async sending
-setTimeout(() => {
+// Wait a bit for async sending, then flush and shut down the SDK
+setTimeout(async () => {
+  await logger.destroy();
   console.log('\n✅ All logs sent! Check the web UI at http://localhost:8080');
-  logger.destroy();
-  process.exit(0);
 }, 2000);

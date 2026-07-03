@@ -39,7 +39,8 @@ services:
         published: "${WEBUI_PORT:-8080}"
         protocol: tcp
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

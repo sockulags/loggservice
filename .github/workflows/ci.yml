@@ -33,7 +33,7 @@ jobs:
           DB_PATH: ./test-data/logs.db
       
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         if: always()
         with:
           file: ./backend/coverage/coverage-final.json
@@ -67,7 +67,7 @@ jobs:
         run: npm run build
       
       - name: Upload coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         if: always()
         with:
           directory: ./web-ui/coverage

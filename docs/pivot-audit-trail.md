@@ -1,6 +1,13 @@
 # Pivot: från loggservice till clomp
 
-**Status:** beslutad · **Datum:** 2026-07-13
+**Status:** genomförd (MVP byggd 2026-07-13) · **Datum:** 2026-07-13
+
+> Uppföljning 2026-07-13: hela byggordningen nedan är genomförd — rivning,
+> events + hash-kedja + verify, auth-omgörning (lösenord/TOTP/recovery,
+> hashade API-nycklar), nytt UI, JSONL/PDF-export, signerade checkpoints,
+> offline-verifierare och omskriven Node-SDK. E2E-verifierad mot riktig
+> PostgreSQL inklusive tamper-test (DB-trigger + offline-verifiering).
+> Kvar (manuellt): döp om GitHub-repot till sockulags/clomp och pusha.
 
 ## Vision
 

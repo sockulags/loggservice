@@ -1,110 +1,152 @@
-# loggservice
+# clomp
 
 [![CI](https://github.com/sockulags/loggservice/actions/workflows/ci.yml/badge.svg)](https://github.com/sockulags/loggservice/actions/workflows/ci.yml)
 [![Security](https://github.com/sockulags/loggservice/actions/workflows/security.yml/badge.svg)](https://github.com/sockulags/loggservice/actions/workflows/security.yml)
 
-Self-hosted log collection platform: services send logs through a small SDK or plain REST to a central API, which stores them in PostgreSQL, archives them nightly to JSONL files, and serves them to a React dashboard.
+**A tamper-evident audit trail for security work.** clomp lets an organization
+*prove* — not just claim — that its security activities happen: access reviews,
+patches, incident handling, backup tests, training. Every event is chained with
+SHA-256 hashes, checkpoints are signed with Ed25519, and exports verify offline.
+Built for SOC 2 and NIS2 evidence. Self-hosted, open source (MIT), no paywalls.
 
-> **Note:** this project is pivoting to **clomp** — an open source, tamper-evident audit trail for security work (SOC 2 / NIS2). See [docs/pivot-audit-trail.md](docs/pivot-audit-trail.md).
+Boring on purpose: no dashboards, no AI. Just a ledger that cannot be rewritten,
+and a report that holds up in an audit.
 
-> Parts of the extended documentation ([SETUP.md](SETUP.md), [QUICKSTART.md](QUICKSTART.md), [ARCHIVE.md](ARCHIVE.md)) are currently in Swedish.
-
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-    subgraph Clients
-        A[Node.js SDK]
-        B[REST clients]
+    subgraph Writers
+        UI1["People — web UI<br/>(access reviews, incidents, training)"]
+        SDK["Machines — Node SDK / REST<br/>(clomp_live_* API keys, stored hashed)"]
     end
 
-    subgraph Backend["Backend — Express (host :3001)"]
-        API["REST API<br/>X-API-Key per service"]
-        CRON["Nightly archiver<br/>(node-cron, 02:00/03:00 UTC)"]
+    subgraph Core["clomp backend — Express + PostgreSQL"]
+        CHAIN["Append-only event chain<br/>hash = SHA-256(prev_hash ‖ canonical event)"]
+        CP["Nightly Ed25519-signed<br/>checkpoints of the chain tip"]
+        VER["GET /api/verify<br/>recomputes the chain"]
     end
 
-    subgraph Storage
-        DB[("PostgreSQL")]
-        AR[["JSONL archives<br/>data/archives/YYYY-MM-DD/"]]
+    subgraph Readers
+        AUD["Auditor — read-only role"]
+        EXP["Exports: JSONL (offline-verifiable)<br/>+ PDF mapped to SOC 2 / NIS2"]
     end
 
-    UI["Web UI — React + nginx (host :8080)<br/>proxies /api to backend"]
-
-    A -- "batched logs" --> API
-    B -- "batched logs" --> API
-    API --> DB
-    CRON -- "archive > 1 day,<br/>prune > 30 days" --> AR
-    DB --> CRON
-    UI --> API
-    API -- "merged reads<br/>(DB + archives)" --> UI
+    UI1 --> CHAIN
+    SDK --> CHAIN
+    CHAIN --> CP
+    CHAIN --> VER
+    CHAIN --> EXP
+    AUD --> EXP
 ```
 
-- **Per-service isolation** — every service gets its own API key; a key can only read and write its own logs.
-- **Admin API** — creating services and admin operations require a separate `ADMIN_API_KEY` (timing-safe comparison).
-- **Hybrid storage** — recent logs live in the database; older logs are archived to JSONL files with 30-day retention. Reads merge both transparently.
-- **Hardening** — helmet, CORS whitelist, three-tier rate limiting, non-root containers with healthchecks, CodeQL + Trivy + Dependabot in CI.
+- **Append-only at the database level** — a trigger rejects `UPDATE`/`DELETE`
+  on events for every role, superuser included. History cannot be edited, only extended.
+- **Tamper-evident** — each event embeds the hash of its predecessor. Change one
+  byte anywhere and `verify` pinpoints the first broken sequence number.
+- **Backfill is a feature** — `occurred_at` (when it happened) and `recorded_at`
+  (when it was logged) are both first-class and both hashed. Late entries are
+  allowed and visible, exactly what an auditor wants.
+- **Evidence with teeth** — uploaded files are content-addressed by SHA-256 and the
+  hash is part of the event, so the attachment is as tamper-evident as the entry.
+- **Verifiable without trusting the server** — the JSONL export carries the full
+  chain and signed checkpoints; `scripts/verify-export.js` checks it on an
+  auditor's laptop with no access to your installation.
+- **Roles that match an audit** — `admin`, `editor`, `auditor` (read-only + export).
+  Passwords are argon2id, TOTP with single-use recovery codes is built in.
 
 ## Quick start (Docker)
 
 ```bash
-git clone https://github.com/sockulags/loggservice.git
-cd loggservice
+git clone https://github.com/sockulags/loggservice.git clomp
+cd clomp
 
-# Configure environment
 cp .env.example .env
-# Set ADMIN_API_KEY and POSTGRES_PASSWORD in .env to strong random values, e.g.:
-openssl rand -hex 32
+# set POSTGRES_PASSWORD in .env to a strong value, e.g. from:
+openssl rand -hex 16
 
 docker compose up -d
+
+# create the first admin (also the break-glass recovery path)
+docker compose exec backend node scripts/create-admin.js you@example.com "Your Name"
 ```
 
 - Web UI: http://localhost:8080
 - API: http://localhost:3001
 
-## Register a service and send logs
+## Recording events
 
-Create a service (requires the admin key):
-
-```bash
-curl -X POST http://localhost:3001/api/services \
-  -H "X-API-Key: $ADMIN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "my-app"}'
-# => returns the service API key (shown once)
-```
-
-Send a log with the returned service key:
-
-```bash
-curl -X POST http://localhost:3001/api/logs \
-  -H "X-API-Key: <service-api-key>" \
-  -H "Content-Type: application/json" \
-  -d '{"level": "info", "message": "Hello from my-app"}'
-```
-
-Or use an SDK:
+From the UI (Record tab), or from code:
 
 ```js
-// sdk-nodejs
-const LoggplattformSDK = require('./sdk-nodejs')
-const log = new LoggplattformSDK({ apiKey: '<service-api-key>', apiUrl: 'http://localhost:3001' })
-log.info('Hello from my-app')
+const Clomp = require('@clomp/sdk-node'); // sdk-nodejs/
+
+const clomp = new Clomp({
+  apiUrl: 'http://localhost:3001',
+  apiKey: process.env.CLOMP_API_KEY, // created by an admin in the UI
+  defaultActor: { type: 'service', id: 'ci' }
+});
+
+clomp.record('patch.applied', { target: { type: 'system', id: 'web-01' } });
+await clomp.destroy(); // flush before exit
 ```
 
-The [Node.js SDK](sdk-nodejs/) queues logs locally and ships them in batches.
+Or plain REST:
+
+```bash
+curl -X POST http://localhost:3001/api/events \
+  -H "X-API-Key: clomp_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"action":"access.review.completed","actor":{"type":"user","id":"lucas"},"target":{"type":"scope","id":"all-prod"}}'
+```
+
+The action catalog is seeded with SOC 2- and NIS2-tagged activity types
+(`access.review.*`, `patch.applied`, `incident.*`, `backup.tested`, …).
+Custom actions are accepted and flagged in reports.
+
+## Verifying
+
+```bash
+# online — recomputes the chain server-side
+curl -H "X-API-Key: clomp_live_..." http://localhost:3001/api/verify
+# => {"intact":true,"verified":5,"checkpoint":{"sequence":4,"signature_valid":true}}
+
+# offline — what the auditor runs against an export, no server access needed
+node backend/scripts/verify-export.js clomp-export.jsonl
+```
+
+Exports live in the UI (Export tab) or at `GET /api/export/jsonl` and
+`GET /api/export/report` (PDF, mapped to SOC 2 criteria / NIS2 articles).
 
 ## Development
 
 ```bash
-# Backend (Express)
-cd backend && npm install && npm run dev
+# a database
+docker run -d --name clomp-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_USER=clomp -e POSTGRES_DB=clomp -p 5432:5432 postgres:16-alpine
 
-# Web UI (React + Vite)
+# backend (Express) — http://localhost:3000
+cd backend && npm install
+DATABASE_URL=postgresql://clomp:dev@localhost:5432/clomp npm run dev
+
+# web UI (React + Vite) — http://localhost:5173, proxies /api to :3000
 cd web-ui && npm install && npm run dev
 ```
 
-Tests and linting run in CI (Jest/Vitest with coverage, ESLint), alongside Docker builds, CodeQL and Trivy scans.
+Tests: `npm test` in `backend/` (Jest, includes hash-chain and RFC 6238
+reference vectors), `web-ui/` (Vitest) and `sdk-nodejs/`. CI runs tests,
+ESLint, Docker builds, CodeQL and Trivy.
+
+## Security model, in one paragraph
+
+clomp defends against *history being rewritten*: by an attacker with API
+access, by an insider with database access, or by the operator themselves.
+It does this with an append-only trigger, a per-tenant hash chain over
+canonical JSON, signed checkpoints, and offline-verifiable exports. It does
+not defend against events never being recorded — that is what the (free)
+reminder features on the roadmap address. See [SECURITY.md](SECURITY.md)
+for reporting vulnerabilities.
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Everything is free, including PDF reports and
+future reminder features. No open-core, no paywalls.

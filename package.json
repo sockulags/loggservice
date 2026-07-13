@@ -1,8 +1,8 @@
 {
-  "name": "loggplattform",
+  "name": "clomp",
   "version": "1.0.0",
   "private": true,
-  "description": "Central logging platform - monorepo root",
+  "description": "clomp — tamper-evident audit trail for security work (monorepo root)",
   "scripts": {
     "prepare": "husky"
   },

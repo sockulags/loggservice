@@ -9,7 +9,7 @@ const logger = pino({
     ? { target: 'pino-pretty', options: { colorize: true } }
     : undefined,
   base: {
-    service: 'loggplattform-backend',
+    service: 'clomp-backend',
     version: process.env.npm_package_version || '1.0.0'
   },
   timestamp: pino.stdTimeFunctions.isoTime

@@ -28,8 +28,6 @@ jobs:
       - name: Run tests
         working-directory: ./backend
         run: npm test
-        env:
-          ADMIN_API_KEY: ${{ secrets.TEST_ADMIN_API_KEY || 'test-admin-key-for-ci' }}
       
       - name: Upload coverage
         uses: codecov/codecov-action@v7
@@ -111,7 +109,7 @@ jobs:
         with:
           context: ./backend
           push: false
-          tags: loggplattform-backend:test
+          tags: clomp-backend:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
@@ -120,6 +118,6 @@ jobs:
         with:
           context: ./web-ui
           push: false
-          tags: loggplattform-web-ui:test
+          tags: clomp-web-ui:test
           cache-from: type=gha
           cache-to: type=gha,mode=max

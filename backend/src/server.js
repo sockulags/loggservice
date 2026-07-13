@@ -34,11 +34,10 @@ app.use(cors({
     // Allow requests with no origin (like curl or same-origin requests)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.indexOf(origin) !== -1 || allowAllOrigins) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // Unlisted origins get no CORS headers (the browser enforces), rather
+    // than an error: same-origin module scripts send an Origin header too,
+    // and must not be turned into 500s.
+    callback(null, allowedOrigins.indexOf(origin) !== -1 || allowAllOrigins);
   },
   // When '*' is allowed, do not allow credentials to avoid exposing authenticated requests to any origin
   credentials: !allowAllOrigins

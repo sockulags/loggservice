@@ -1,4 +1,4 @@
-# Contributing to Loggplattform
+# Contributing to clomp
 
 Thank you for your interest in contributing! This document provides guidelines and instructions.
 
@@ -16,8 +16,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/loggplattform.git
-   cd loggplattform
+   git clone https://github.com/YOUR_USERNAME/clomp.git
+   cd clomp
    ```
 
 3. Install dependencies:
@@ -37,14 +37,10 @@ Thank you for your interest in contributing! This document provides guidelines a
    cp .env.example .env
    ```
 
-5. Set up development database:
-   ```bash
-   cd backend && npm run setup:dev
-   ```
-
-6. Start development:
+5. Start development:
    ```bash
    docker-compose up -d
+   docker compose exec backend node scripts/create-admin.js you@example.com
    ```
 
 ## Development Workflow

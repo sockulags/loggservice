@@ -1,10 +1,10 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: loggplattform-postgres
+    container_name: clomp-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-loggplattform}
-      POSTGRES_USER: ${POSTGRES_USER:-loggplattform}
+      POSTGRES_DB: ${POSTGRES_DB:-clomp}
+      POSTGRES_USER: ${POSTGRES_USER:-clomp}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -13,7 +13,7 @@ services:
       # network, the host mapping exists solely for local inspection/debugging
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-loggplattform} -d ${POSTGRES_DB:-loggplattform}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clomp} -d ${POSTGRES_DB:-clomp}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,17 +23,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: loggplattform-backend
+    container_name: clomp-backend
     ports:
       - target: 3000
         published: "${BACKEND_PORT:-3001}"
         protocol: tcp
     environment:
       - PORT=3000
-      # REQUIRED: ADMIN_API_KEY must be set - no default value for security
-      # Generate a secure random key: openssl rand -hex 32
-      - ADMIN_API_KEY=${ADMIN_API_KEY:?ADMIN_API_KEY environment variable is required}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-loggplattform}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-loggplattform}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-clomp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-clomp}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:5173}
     volumes:
       - backend-data:/app/data
@@ -51,7 +48,7 @@ services:
     build:
       context: ./web-ui
       dockerfile: Dockerfile
-    container_name: loggplattform-web-ui
+    container_name: clomp-web-ui
     ports:
       - target: 80
         published: "${WEBUI_PORT:-8080}"

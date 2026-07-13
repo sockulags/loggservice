@@ -88,10 +88,13 @@ When deploying this application, follow these security guidelines:
 
 ### Known Security Considerations
 
-- API keys are stored in plain text in the database (hashing is planned)
-- The database is not encrypted at rest
+- The database is not encrypted at rest (the hash chain detects tampering,
+  it does not provide confidentiality)
+- Checkpoint signing keys live on the server's disk; an attacker with full
+  host access at time T can forge checkpoints after T (but not rewrite
+  history before the last externally shared export/checkpoint)
 - Rate limiting should be tuned for your specific traffic patterns
-- Log data may contain sensitive information - handle accordingly
+- Event context and evidence may contain sensitive information - handle accordingly
 
 ## Security Features
 

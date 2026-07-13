@@ -17,17 +17,20 @@ describe('App', () => {
 
   it('renders header with title', async () => {
     render(<App />);
-    expect(screen.getByText('📦 Loggplattform')).toBeInTheDocument();
+    // findBy awaits the async fetchLogs update so it settles inside act()
+    expect(await screen.findByText('📦 Loggplattform')).toBeInTheDocument();
   });
 
   it('renders API key input field', async () => {
     render(<App />);
-    expect(screen.getByPlaceholderText('API-nyckel')).toBeInTheDocument();
+    // findBy awaits the async fetchLogs update so it settles inside act()
+    expect(await screen.findByPlaceholderText('API-nyckel')).toBeInTheDocument();
   });
 
   it('renders filter controls', async () => {
     render(<App />);
-    expect(screen.getByText('Alla nivåer')).toBeInTheDocument();
+    // findBy awaits the async fetchLogs update so it settles inside act()
+    expect(await screen.findByText('Alla nivåer')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Korrelations-ID')).toBeInTheDocument();
     expect(screen.getByText('🔄 Uppdatera')).toBeInTheDocument();
   });
@@ -35,6 +38,11 @@ describe('App', () => {
   it('shows loading state initially', async () => {
     render(<App />);
     expect(screen.getByText('Laddar loggar...')).toBeInTheDocument();
+
+    // Wait for the async fetchLogs update to settle inside act()
+    await waitFor(() => {
+      expect(screen.getByText('Inga loggar hittades')).toBeInTheDocument();
+    });
   });
 
   it('shows "no logs" message when API returns empty array', async () => {
@@ -125,8 +133,9 @@ describe('App', () => {
   it('loads API key from localStorage on mount', async () => {
     localStorage.getItem.mockReturnValue('saved-key');
     render(<App />);
-    
-    const apiKeyInput = screen.getByPlaceholderText('API-nyckel');
+
+    // findBy awaits the async fetchLogs update so it settles inside act()
+    const apiKeyInput = await screen.findByPlaceholderText('API-nyckel');
     expect(apiKeyInput.value).toBe('saved-key');
   });
 

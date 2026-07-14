@@ -2,6 +2,10 @@
 
 [![CI](https://github.com/sockulags/clomp/actions/workflows/ci.yml/badge.svg)](https://github.com/sockulags/clomp/actions/workflows/ci.yml)
 [![Security](https://github.com/sockulags/clomp/actions/workflows/security.yml/badge.svg)](https://github.com/sockulags/clomp/actions/workflows/security.yml)
+[![Docs](https://github.com/sockulags/clomp/actions/workflows/docs.yml/badge.svg)](https://sockulags.github.io/clomp/)
+
+**Documentation: [sockulags.github.io/clomp](https://sockulags.github.io/clomp/)** —
+guide, operations handbook, REST/CLI/SDK reference, hash-chain spec and threat model.
 
 **A tamper-evident audit trail for security work.** clomp lets an organization
 *prove* — not just claim — that its security activities happen: access reviews,

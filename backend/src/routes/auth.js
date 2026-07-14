@@ -95,9 +95,52 @@ router.get('/me', requireRole(), (req, res) => {
   res.json({ user: req.user });
 });
 
+// POST /api/auth/change-password { current_password, new_password }
+// Revokes every other session so a leaked initial password stops working
+// everywhere the moment it is changed.
+router.post('/change-password', requireRole(), async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body || {};
+    if (typeof new_password !== 'string' || new_password.length < 10 || new_password.length > 200) {
+      return res.status(400).json({ error: 'new_password must be 10–200 characters' });
+    }
+
+    const { rows } = await getPool().query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+    const ok = await argon2.verify(rows[0].password_hash, String(current_password || '')).catch(() => false);
+    if (!ok) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    await getPool().query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      [await argon2.hash(new_password), req.user.id]
+    );
+    await getPool().query(
+      'DELETE FROM sessions WHERE user_id = $1 AND token_hash != $2',
+      [req.user.id, require('../middleware/session').hashToken(req.sessionToken)]
+    );
+    return res.json({ changed: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Change password error');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/auth/totp/setup — generate a secret; enable with a valid code.
+// Re-running setup while TOTP is active would silently disarm it, so an
+// already-enabled account must re-authenticate with its password first.
 router.post('/totp/setup', requireRole(), async (req, res) => {
   try {
+    const { rows: current } = await getPool().query(
+      'SELECT password_hash, totp_enabled FROM users WHERE id = $1', [req.user.id]
+    );
+    if (current[0].totp_enabled) {
+      const ok = await argon2.verify(current[0].password_hash, String(req.body?.password || '')).catch(() => false);
+      if (!ok) {
+        return res.status(401).json({ error: 'Password required to re-configure active TOTP' });
+      }
+    }
+
     const secret = generateSecret();
     await getPool().query(
       'UPDATE users SET totp_secret = $1, totp_enabled = false WHERE id = $2',

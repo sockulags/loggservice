@@ -12,7 +12,8 @@ export const api = {
   me: () => client.get('/auth/me'),
   login: (email, password, totp) => client.post('/auth/login', { email, password, totp }),
   logout: () => client.post('/auth/logout'),
-  totpSetup: () => client.post('/auth/totp/setup'),
+  changePassword: (current_password, new_password) => client.post('/auth/change-password', { current_password, new_password }),
+  totpSetup: (password) => client.post('/auth/totp/setup', password ? { password } : {}),
   totpEnable: (code) => client.post('/auth/totp/enable', { code }),
   totpDisable: (password) => client.post('/auth/totp/disable', { password }),
 

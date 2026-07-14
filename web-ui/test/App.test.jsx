@@ -25,6 +25,7 @@ vi.mock('../src/api', () => {
     keys: vi.fn(),
     createKey: vi.fn(),
     revokeKey: vi.fn(),
+    changePassword: vi.fn(),
     totpSetup: vi.fn(),
     totpEnable: vi.fn(),
     totpDisable: vi.fn()

@@ -1,6 +1,50 @@
 import React, { useState } from 'react';
 import api from '../api';
 
+function ChangePassword() {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    try {
+      await api.changePassword(current, next);
+      setCurrent('');
+      setNext('');
+      setMessage('Password changed. Other sessions have been signed out.');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to change password');
+    }
+  };
+
+  return (
+    <div className="card">
+      <h2>Change password</h2>
+      <p className="hint">
+        Change the initial password you were given as soon as you sign in.
+        Changing it signs out every other session.
+      </p>
+      <form className="inline-form" onSubmit={submit}>
+        <input
+          type="password" placeholder="current password" autoComplete="current-password"
+          value={current} onChange={e => setCurrent(e.target.value)} required
+        />
+        <input
+          type="password" placeholder="new password (min 10 chars)" autoComplete="new-password"
+          minLength={10} value={next} onChange={e => setNext(e.target.value)} required
+        />
+        <button className="btn primary" type="submit">Change password</button>
+      </form>
+      {message && <p className="ok-message">{message}</p>}
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+}
+
 function Security() {
   const [setup, setSetup] = useState(null);
   const [code, setCode] = useState('');
@@ -13,8 +57,12 @@ function Security() {
     setError(null);
     setMessage(null);
     setRecoveryCodes(null);
-    const res = await api.totpSetup();
-    setSetup(res.data);
+    try {
+      const res = await api.totpSetup();
+      setSetup(res.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to start TOTP setup');
+    }
   };
 
   const enable = async (e) => {
@@ -47,6 +95,7 @@ function Security() {
 
   return (
     <section className="security-view">
+      <ChangePassword />
       <div className="card">
         <h2>Two-factor authentication (TOTP)</h2>
         <p className="hint">

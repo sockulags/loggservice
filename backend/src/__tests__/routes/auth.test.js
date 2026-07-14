@@ -35,9 +35,21 @@ const mockPool = {
       const user = store.users.find(u => u.id === params[0]);
       return { rows: user ? [{ totp_secret: user.totp_secret }] : [] };
     }
+    if (sql.includes('SELECT password_hash, totp_enabled FROM users')) {
+      const user = store.users.find(u => u.id === params[0]);
+      return { rows: user ? [{ password_hash: user.password_hash, totp_enabled: user.totp_enabled }] : [] };
+    }
     if (sql.includes('SELECT password_hash FROM users')) {
       const user = store.users.find(u => u.id === params[0]);
       return { rows: user ? [{ password_hash: user.password_hash }] : [] };
+    }
+    if (sql.includes('UPDATE users SET password_hash')) {
+      store.users.find(u => u.id === params[1]).password_hash = params[0];
+      return { rows: [] };
+    }
+    if (sql.includes('DELETE FROM sessions WHERE user_id = $1 AND token_hash != $2')) {
+      store.sessions = store.sessions.filter(s => !(s.user_id === params[0] && s.token_hash !== params[1]));
+      return { rows: [] };
     }
     if (sql.includes('UPDATE users SET totp_secret')) {
       const user = store.users.find(u => u.id === params[1]);
@@ -218,5 +230,71 @@ describe('auth routes', () => {
     expect(disable.status).toBe(200);
     expect(store.users[0].totp_enabled).toBe(false);
     expect(store.users[0].totp_secret).toBeNull();
+  });
+
+  test('re-running TOTP setup while enabled requires the password', async () => {
+    const login = await request(app).post('/api/auth/login')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const cookie = login.headers['set-cookie'][0].split(';')[0];
+
+    const setup = await request(app).post('/api/auth/totp/setup').set('Cookie', cookie);
+    await request(app).post('/api/auth/totp/enable')
+      .set('Cookie', cookie).send({ code: totpCode(setup.body.secret) });
+    expect(store.users[0].totp_enabled).toBe(true);
+
+    // Without the password, an active TOTP must not be silently disarmed.
+    const noPw = await request(app).post('/api/auth/totp/setup').set('Cookie', cookie);
+    expect(noPw.status).toBe(401);
+    expect(store.users[0].totp_enabled).toBe(true);
+
+    const withPw = await request(app).post('/api/auth/totp/setup')
+      .set('Cookie', cookie).send({ password: 'correct-horse' });
+    expect(withPw.status).toBe(200);
+  });
+
+  test('change-password verifies the current password and enforces length', async () => {
+    const login = await request(app).post('/api/auth/login')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const cookie = login.headers['set-cookie'][0].split(';')[0];
+
+    const short = await request(app).post('/api/auth/change-password')
+      .set('Cookie', cookie).send({ current_password: 'correct-horse', new_password: 'short' });
+    expect(short.status).toBe(400);
+
+    const wrong = await request(app).post('/api/auth/change-password')
+      .set('Cookie', cookie).send({ current_password: 'nope', new_password: 'a-much-longer-password' });
+    expect(wrong.status).toBe(401);
+
+    const ok = await request(app).post('/api/auth/change-password')
+      .set('Cookie', cookie).send({ current_password: 'correct-horse', new_password: 'a-much-longer-password' });
+    expect(ok.status).toBe(200);
+
+    // Old password no longer works, new one does.
+    expect((await request(app).post('/api/auth/login')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' })).status).toBe(401);
+    expect((await request(app).post('/api/auth/login')
+      .send({ email: 'lucas@example.com', password: 'a-much-longer-password' })).status).toBe(200);
+  });
+
+  test('change-password revokes every other session but keeps the current one', async () => {
+    const s1 = await request(app).post('/api/auth/login')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const s2 = await request(app).post('/api/auth/login')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const cookie1 = s1.headers['set-cookie'][0].split(';')[0];
+    const cookie2 = s2.headers['set-cookie'][0].split(';')[0];
+    expect(store.sessions).toHaveLength(2);
+
+    await request(app).post('/api/auth/change-password')
+      .set('Cookie', cookie2).send({ current_password: 'correct-horse', new_password: 'a-much-longer-password' });
+
+    expect((await request(app).get('/api/auth/me').set('Cookie', cookie2)).status).toBe(200);
+    expect((await request(app).get('/api/auth/me').set('Cookie', cookie1)).status).toBe(401);
+  });
+
+  test('change-password requires authentication', async () => {
+    const res = await request(app).post('/api/auth/change-password')
+      .send({ current_password: 'x', new_password: 'a-much-longer-password' });
+    expect(res.status).toBe(401);
   });
 });

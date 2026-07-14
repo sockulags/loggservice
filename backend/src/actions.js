@@ -29,7 +29,8 @@ const ACTION_CATALOG = [
   // see when a scheduled control was added, relaxed or removed.
   { action: 'control.schedule.created', title: 'Scheduled control created', soc2: ['CC5.1'], nis2: ['21.2(a)'] },
   { action: 'control.schedule.updated', title: 'Scheduled control updated', soc2: ['CC5.1'], nis2: ['21.2(a)'] },
-  { action: 'control.schedule.removed', title: 'Scheduled control removed', soc2: ['CC5.1'], nis2: ['21.2(a)'] }
+  { action: 'control.schedule.removed', title: 'Scheduled control removed', soc2: ['CC5.1'], nis2: ['21.2(a)'] },
+  { action: 'retention.pruned', title: 'Retention pruning performed', soc2: ['CC6.5'], nis2: ['21.2(a)'] }
 ];
 
 const byAction = new Map(ACTION_CATALOG.map(a => [a.action, a]));

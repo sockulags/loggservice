@@ -58,6 +58,10 @@ flowchart LR
   means even root access cannot rewrite history undetected.
 - **Roles that match an audit** — `admin`, `editor`, `auditor` (read-only + export).
   Passwords are argon2id, TOTP with single-use recovery codes is built in.
+- **Retention without breaking the chain** — a privileged script prunes old
+  events by cutting only at a signed checkpoint, archiving the range to
+  verifiable JSONL first, and appending the prune itself to the chain. See
+  [docs/retention.md](docs/retention.md).
 - **Scheduled controls** — declare how often an activity must be logged
   ("access review quarterly") and clomp surfaces what's overdue, in the UI and
   in the PDF report. The chain proves recorded history is genuine; schedules

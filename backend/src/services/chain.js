@@ -103,9 +103,38 @@ async function verifyChain(tenantId, fromSequence = 1, toSequence = null) {
   const BATCH = 1000;
 
   let expectedPrev = null;
+  let anchor = null;
   if (fromSequence <= 1) {
     fromSequence = 1;
     expectedPrev = GENESIS_HASH;
+
+    // Retention may have pruned the oldest events. The remaining chain then
+    // starts above sequence 1 and must anchor at a signed checkpoint whose
+    // (sequence, hash) matches the first retained event's predecessor.
+    const { rows: minRows } = await pool.query(
+      'SELECT MIN(sequence) AS min FROM events WHERE tenant_id = $1',
+      [tenantId]
+    );
+    const minSeq = minRows.length && minRows[0].min !== null ? Number(minRows[0].min) : null;
+    if (minSeq !== null && minSeq > 1) {
+      const { rows: firstRows } = await pool.query(
+        'SELECT prev_hash FROM events WHERE tenant_id = $1 AND sequence = $2',
+        [tenantId, minSeq]
+      );
+      const { rows: cpRows } = await pool.query(
+        'SELECT hash FROM checkpoints WHERE tenant_id = $1 AND sequence = $2 ORDER BY signed_at DESC LIMIT 1',
+        [tenantId, minSeq - 1]
+      );
+      if (!cpRows.length || cpRows[0].hash !== firstRows[0].prev_hash) {
+        return {
+          intact: false, verified: 0, firstBreak: minSeq,
+          reason: 'history before this sequence was removed without a matching signed checkpoint anchor'
+        };
+      }
+      expectedPrev = firstRows[0].prev_hash;
+      fromSequence = minSeq;
+      anchor = { sequence: minSeq - 1, hash: expectedPrev };
+    }
   } else {
     const prevRow = await pool.query(
       'SELECT hash FROM events WHERE tenant_id = $1 AND sequence = $2',
@@ -154,7 +183,7 @@ async function verifyChain(tenantId, fromSequence = 1, toSequence = null) {
     if (rows.length < BATCH) break;
   }
 
-  return { intact: true, verified };
+  return anchor ? { intact: true, verified, anchored_at: anchor } : { intact: true, verified };
 }
 
 module.exports = { appendEvent, verifyChain, rowToEvent, toIso };

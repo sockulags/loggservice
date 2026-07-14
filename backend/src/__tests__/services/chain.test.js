@@ -39,6 +39,18 @@ const mockClient = {
 const mockPool = {
   connect: jest.fn(async () => mockClient),
   query: jest.fn(async (sql, params) => {
+    if (sql.includes('FROM checkpoints')) {
+      const [tenantId, seq] = params;
+      const rows = (store.checkpoints || [])
+        .filter(c => c.tenant_id === tenantId && c.sequence === Number(seq))
+        .sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at));
+      return { rows };
+    }
+    if (sql.includes('MIN(sequence)')) {
+      const [tenantId] = params;
+      const seqs = store.events.filter(e => e.tenant_id === tenantId).map(e => e.sequence);
+      return { rows: [{ min: seqs.length ? Math.min(...seqs) : null }] };
+    }
     if (sql.includes('WHERE tenant_id = $1 AND sequence = $2')) {
       const [tenantId, seq] = params;
       return { rows: store.events.filter(e => e.tenant_id === tenantId && e.sequence === Number(seq)) };
@@ -67,7 +79,7 @@ const TENANT = 'aaaaaaaa-0000-0000-0000-000000000001';
 describe('chain service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    store = { events: [] };
+    store = { events: [], checkpoints: [] };
   });
 
   test('appendEvent assigns gap-free sequences and links hashes', async () => {
@@ -176,5 +188,50 @@ describe('chain service', () => {
   test('verifyChain on an empty chain is intact with zero verified', async () => {
     const result = await verifyChain(TENANT);
     expect(result).toEqual({ intact: true, verified: 0 });
+  });
+
+  test('verifyChain anchors a retention-pruned chain at a signed checkpoint', async () => {
+    for (let i = 0; i < 5; i++) {
+      await appendEvent(TENANT, { actor: { type: 'user', id: 'u1' }, action: 'training.completed' });
+    }
+    // Retention pruned sequences 1–2, cutting at a checkpoint of sequence 2.
+    const anchorEvent = store.events.find(e => e.sequence === 2);
+    store.checkpoints.push({
+      tenant_id: TENANT, sequence: 2, hash: anchorEvent.hash,
+      signed_at: '2026-07-01T02:00:00.000Z'
+    });
+    store.events = store.events.filter(e => e.sequence > 2);
+
+    const result = await verifyChain(TENANT);
+    expect(result.intact).toBe(true);
+    expect(result.verified).toBe(3);
+    expect(result.anchored_at).toEqual({ sequence: 2, hash: anchorEvent.hash });
+  });
+
+  test('verifyChain rejects pruned history without a matching checkpoint', async () => {
+    for (let i = 0; i < 4; i++) {
+      await appendEvent(TENANT, { actor: { type: 'user', id: 'u1' }, action: 'training.completed' });
+    }
+    // History removed with no checkpoint attesting the cut point.
+    store.events = store.events.filter(e => e.sequence > 2);
+
+    const result = await verifyChain(TENANT);
+    expect(result.intact).toBe(false);
+    expect(result.firstBreak).toBe(3);
+    expect(result.reason).toContain('without a matching signed checkpoint');
+  });
+
+  test('verifyChain rejects a pruned chain whose checkpoint hash disagrees', async () => {
+    for (let i = 0; i < 4; i++) {
+      await appendEvent(TENANT, { actor: { type: 'user', id: 'u1' }, action: 'training.completed' });
+    }
+    store.checkpoints.push({
+      tenant_id: TENANT, sequence: 2, hash: 'f'.repeat(64),
+      signed_at: '2026-07-01T02:00:00.000Z'
+    });
+    store.events = store.events.filter(e => e.sequence > 2);
+
+    const result = await verifyChain(TENANT);
+    expect(result.intact).toBe(false);
   });
 });

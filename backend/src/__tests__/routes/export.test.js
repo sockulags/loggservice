@@ -87,7 +87,8 @@ describe('export routes', () => {
           eventRow(2, { action: 'made.up.action', evidence: [{ filename: 'x.txt', sha256: 'a'.repeat(64), size: 5 }] })
         ]
       })
-      .mockResolvedValueOnce({ rows: [{ sequence: '2', signed_at: new Date('2026-07-13T02:00:00Z') }] });
+      .mockResolvedValueOnce({ rows: [{ sequence: '2', signed_at: new Date('2026-07-13T02:00:00Z') }] })
+      .mockResolvedValueOnce({ rows: [] }); // schedules
 
     const res = await request(makeApp()).get('/api/export/report').buffer(true).parse((res, cb) => {
       const chunks = [];

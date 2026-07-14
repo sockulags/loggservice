@@ -13,6 +13,10 @@ vi.mock('../src/api', () => {
     catalog: vi.fn(),
     events: vi.fn(),
     createEvent: vi.fn(),
+    schedules: vi.fn(),
+    createSchedule: vi.fn(),
+    patchSchedule: vi.fn(),
+    deleteSchedule: vi.fn(),
     uploadEvidence: vi.fn(),
     users: vi.fn(),
     createUser: vi.fn(),
@@ -58,6 +62,7 @@ function primeLoggedIn(user) {
   api.verify.mockResolvedValue({ data: { intact: true, verified: 1, checkpoint: null } });
   api.catalog.mockResolvedValue({ data: { actions: [{ action: 'patch.applied', title: 'Patch applied', soc2: ['CC7.1'], nis2: ['21.2(e)'] }] } });
   api.events.mockResolvedValue({ data: { events: [EVENT], has_more: false, next_before_sequence: null } });
+  api.schedules.mockResolvedValue({ data: { schedules: [], overdue: 0 } });
 }
 
 describe('App', () => {
@@ -154,6 +159,51 @@ describe('App', () => {
     expect(body.action).toBe('patch.applied');
     expect(body.actor).toEqual({ type: 'user', id: 'lucas@example.com' });
     expect(await screen.findByText(/#2/)).toBeInTheDocument();
+  });
+
+  it('shows scheduled controls with overdue status', async () => {
+    primeLoggedIn(EDITOR);
+    api.schedules.mockResolvedValue({
+      data: {
+        schedules: [{
+          id: 's1', action: 'access.review.completed', title: 'Quarterly access review',
+          frequency: 'quarterly', grace_days: 14, active: true,
+          status: 'overdue', last_event_at: null, next_due_at: '2026-04-01T00:00:00.000Z',
+          deadline_at: '2026-04-15T00:00:00.000Z'
+        }],
+        overdue: 1
+      }
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await findLedgerCell();
+    await user.click(screen.getByText('Schedules'));
+
+    expect(await screen.findByText('Quarterly access review')).toBeInTheDocument();
+    expect(screen.getByText('overdue')).toBeInTheDocument();
+    expect(screen.getByText(/1 of 1 scheduled control/)).toBeInTheDocument();
+    expect(screen.getByText('never')).toBeInTheDocument();
+  });
+
+  it('creates a schedule from the Schedules view', async () => {
+    primeLoggedIn(EDITOR);
+    api.createSchedule.mockResolvedValue({ data: { schedule: { id: 's1' } } });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await findLedgerCell();
+    await user.click(screen.getByText('Schedules'));
+
+    await user.type(await screen.findByPlaceholderText(/action \(e\.g\./), 'backup.tested');
+    await user.click(screen.getByText('Add schedule'));
+
+    await waitFor(() => expect(api.createSchedule).toHaveBeenCalled());
+    expect(api.createSchedule.mock.calls[0][0]).toMatchObject({
+      action: 'backup.tested',
+      frequency: 'quarterly',
+      grace_days: 14
+    });
   });
 
   it('signs out', async () => {

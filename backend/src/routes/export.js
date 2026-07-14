@@ -2,6 +2,7 @@ const express = require('express');
 const PDFDocument = require('pdfkit');
 const { getPool } = require('../database');
 const { rowToEvent, verifyChain } = require('../services/chain');
+const { listWithStatus } = require('../services/schedules');
 const { requireAuth, requestTenantId } = require('../middleware/apikey');
 const { getAction } = require('../actions');
 const logger = require('../logger');
@@ -127,6 +128,32 @@ router.get('/report', requireAuth(), async (req, res) => {
       doc.text('No signed checkpoint exists yet.');
     }
     doc.moveDown(1);
+
+    // Scheduled controls: what should have been logged, and whether it was.
+    const schedules = await listWithStatus(tenantId);
+    if (schedules.length) {
+      const overdue = schedules.filter(s => s.status === 'overdue');
+      doc.font('Helvetica-Bold').fontSize(13).fillColor(ink).text('Scheduled controls');
+      doc.moveDown(0.3);
+      doc.font('Helvetica').fontSize(10);
+      if (overdue.length) {
+        doc.fillColor('#b91c1c').text(`✘ ${overdue.length} of ${schedules.length} scheduled control(s) overdue.`);
+      } else {
+        doc.fillColor(accent).text(`✔ All ${schedules.length} scheduled control(s) on time.`);
+      }
+      doc.moveDown(0.3);
+      for (const s of schedules) {
+        if (doc.y > doc.page.height - 100) doc.addPage();
+        const label = { ok: 'on time', due: 'due (in grace period)', overdue: 'OVERDUE', inactive: 'inactive' }[s.status] || s.status;
+        const color = { ok: accent, due: '#b45309', overdue: '#b91c1c', inactive: muted }[s.status] || ink;
+        doc.fillColor(ink).font('Helvetica-Bold').text(`${s.title || s.action}`, { continued: true })
+          .font('Helvetica').fillColor(color).text(`  ${label}`, { continued: true })
+          .fillColor(muted).text(`   ${s.frequency}` +
+            (s.last_event_at ? ` · last logged ${s.last_event_at.slice(0, 10)}` : ' · never logged') +
+            (s.next_due_at ? ` · next due ${s.next_due_at.slice(0, 10)}` : ''));
+      }
+      doc.moveDown(1);
+    }
 
     // Summary per activity type
     doc.font('Helvetica-Bold').fontSize(13).fillColor(ink).text('Activity summary');

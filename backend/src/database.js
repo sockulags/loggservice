@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 );
 CREATE INDEX IF NOT EXISTS idx_checkpoints_tenant ON checkpoints(tenant_id, sequence);
 
+CREATE TABLE IF NOT EXISTS schedules (
+  id UUID PRIMARY KEY,
+  tenant_id UUID NOT NULL REFERENCES tenants(id),
+  action TEXT NOT NULL,
+  title TEXT,
+  frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly', 'monthly', 'quarterly', 'yearly')),
+  grace_days INTEGER NOT NULL DEFAULT 0 CHECK (grace_days >= 0 AND grace_days <= 365),
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, action)
+);
+
 CREATE TABLE IF NOT EXISTS evidence_files (
   sha256 TEXT PRIMARY KEY,
   filename TEXT NOT NULL,

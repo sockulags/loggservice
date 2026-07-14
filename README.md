@@ -54,6 +54,11 @@ flowchart LR
   auditor's laptop with no access to your installation.
 - **Roles that match an audit** — `admin`, `editor`, `auditor` (read-only + export).
   Passwords are argon2id, TOTP with single-use recovery codes is built in.
+- **Scheduled controls** — declare how often an activity must be logged
+  ("access review quarterly") and clomp surfaces what's overdue, in the UI and
+  in the PDF report. The chain proves recorded history is genuine; schedules
+  expose what should have been recorded but wasn't. Changes to the schedule
+  are themselves chain events.
 
 ## Quick start (Docker)
 
@@ -143,9 +148,10 @@ clomp defends against *history being rewritten*: by an attacker with API
 access, by an insider with database access, or by the operator themselves.
 It does this with an append-only trigger, a per-tenant hash chain over
 canonical JSON, signed checkpoints, and offline-verifiable exports. It does
-not defend against events never being recorded — that is what the (free)
-reminder features on the roadmap address. See [SECURITY.md](SECURITY.md)
-for reporting vulnerabilities.
+not defend against events never being recorded — scheduled controls address
+that by declaring the expected cadence and flagging overdue activities in
+the UI and the PDF report. See [SECURITY.md](SECURITY.md) for reporting
+vulnerabilities.
 
 ## License
 

@@ -24,7 +24,12 @@ const ACTION_CATALOG = [
   { action: 'pentest.completed', title: 'Penetration test completed', soc2: ['CC4.1'], nis2: ['21.2(f)'] },
   { action: 'audit.internal.completed', title: 'Internal audit completed', soc2: ['CC4.1'], nis2: ['21.2(f)'] },
   { action: 'continuity.tested', title: 'Business continuity plan tested', soc2: ['A1.3'], nis2: ['21.2(c)'] },
-  { action: 'mfa.enforced', title: 'MFA enforcement verified', soc2: ['CC6.1'], nis2: ['21.2(j)'] }
+  { action: 'mfa.enforced', title: 'MFA enforcement verified', soc2: ['CC6.1'], nis2: ['21.2(j)'] },
+  // Changes to the control plan itself are chain events too: an auditor can
+  // see when a scheduled control was added, relaxed or removed.
+  { action: 'control.schedule.created', title: 'Scheduled control created', soc2: ['CC5.1'], nis2: ['21.2(a)'] },
+  { action: 'control.schedule.updated', title: 'Scheduled control updated', soc2: ['CC5.1'], nis2: ['21.2(a)'] },
+  { action: 'control.schedule.removed', title: 'Scheduled control removed', soc2: ['CC5.1'], nis2: ['21.2(a)'] }
 ];
 
 const byAction = new Map(ACTION_CATALOG.map(a => [a.action, a]));

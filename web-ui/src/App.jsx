@@ -6,11 +6,13 @@ import Record from './views/Record';
 import ExportView from './views/ExportView';
 import Admin from './views/Admin';
 import Security from './views/Security';
+import Schedules from './views/Schedules';
 import './App.css';
 
 const TABS = [
   { id: 'ledger', label: 'Ledger', roles: ['admin', 'editor', 'auditor'] },
   { id: 'record', label: 'Record', roles: ['admin', 'editor'] },
+  { id: 'schedules', label: 'Schedules', roles: ['admin', 'editor', 'auditor'] },
   { id: 'export', label: 'Export', roles: ['admin', 'editor', 'auditor'] },
   { id: 'admin', label: 'Admin', roles: ['admin'] },
   { id: 'security', label: 'Security', roles: ['admin', 'editor', 'auditor'] }
@@ -92,6 +94,7 @@ function App() {
       <main className="content">
         {tab === 'ledger' && <Ledger />}
         {tab === 'record' && <Record user={user} onRecorded={refreshChainStatus} />}
+        {tab === 'schedules' && <Schedules user={user} />}
         {tab === 'export' && <ExportView />}
         {tab === 'admin' && user.role === 'admin' && <Admin />}
         {tab === 'security' && <Security />}

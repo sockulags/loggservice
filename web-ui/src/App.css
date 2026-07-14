@@ -365,3 +365,23 @@ input[type="file"] { border: 1px dashed var(--rule); padding: 0.6rem; }
   .recovery-grid { grid-template-columns: repeat(2, 1fr); }
   .ledger .time { display: none; }
 }
+
+/* Scheduled controls */
+.sched-status {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  border: 1px solid var(--rule);
+  padding: 0.08rem 0.4rem;
+  border-radius: 2px;
+}
+.sched-status.ok { border-color: var(--accent); color: var(--accent); }
+.sched-status.due { border-color: var(--warn); color: var(--warn); }
+.sched-status.overdue {
+  border-color: var(--danger);
+  color: #fff;
+  background: var(--danger);
+  font-weight: 700;
+}
+.sched-summary { font-size: 0.85rem; margin: 0.5rem 0; }
+.sched-summary.ok { color: var(--accent); }
+.sched-summary.overdue { color: var(--danger); font-weight: 600; }

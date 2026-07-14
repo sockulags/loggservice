@@ -22,6 +22,12 @@ export const api = {
   createEvent: (body) => client.post('/events', body),
   verify: () => client.get('/verify'),
 
+  // schedules
+  schedules: () => client.get('/schedules'),
+  createSchedule: (body) => client.post('/schedules', body),
+  patchSchedule: (id, body) => client.patch(`/schedules/${id}`, body),
+  deleteSchedule: (id) => client.delete(`/schedules/${id}`),
+
   // evidence
   uploadEvidence: (file) => {
     const form = new FormData();

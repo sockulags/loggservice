@@ -26,6 +26,13 @@ vi.mock('../src/api', () => {
     createKey: vi.fn(),
     revokeKey: vi.fn(),
     changePassword: vi.fn(),
+    passkeyConfig: vi.fn(),
+    passkeys: vi.fn(),
+    passkeyRegisterOptions: vi.fn(),
+    passkeyRegisterVerify: vi.fn(),
+    passkeyDelete: vi.fn(),
+    passkeyLoginOptions: vi.fn(),
+    passkeyLoginVerify: vi.fn(),
     totpSetup: vi.fn(),
     totpEnable: vi.fn(),
     totpDisable: vi.fn()
@@ -69,6 +76,10 @@ function primeLoggedIn(user) {
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Passkeys are disabled by default; every screen that probes for them
+    // must handle the rejection gracefully.
+    api.passkeyConfig.mockRejectedValue(new Error('not configured'));
+    api.passkeys.mockResolvedValue({ data: { passkeys: [] } });
   });
 
   it('shows the login screen when there is no session', async () => {

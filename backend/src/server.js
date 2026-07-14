@@ -11,6 +11,7 @@ const { initDatabase, getPool } = require('./database');
 const { attachSession } = require('./middleware/session');
 const { attachApiKey } = require('./middleware/apikey');
 const authRoutes = require('./routes/auth');
+const passkeyRoutes = require('./routes/passkeys');
 const userRoutes = require('./routes/users');
 const apiKeyRoutes = require('./routes/apikeys');
 const eventRoutes = require('./routes/events');
@@ -127,6 +128,7 @@ app.get('/health', healthCheckLimiter, async (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/passkeys', passkeyRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/keys', apiKeyRoutes);
 app.use('/api/events', eventLimiter, eventRoutes);

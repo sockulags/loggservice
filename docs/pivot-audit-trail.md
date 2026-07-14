@@ -8,6 +8,15 @@
 > offline-verifierare och omskriven Node-SDK. E2E-verifierad mot riktig
 > PostgreSQL inklusive tamper-test (DB-trigger + offline-verifiering).
 > Kvar (manuellt): döp om GitHub-repot till sockulags/clomp och pusha.
+>
+> Uppföljning 2026-07-14: repot omdöpt till sockulags/clomp och pushat;
+> v0.1.0-alpha släppt med GHCR-images. Därefter byggt: schemalagda kontroller
+> med overdue-status (UI + PDF-rapport), extern checkpoint-ankring
+> (e-post/webhook), kedjesäker retention-gallring, E2E-jobb i CI mot riktig
+> Postgres inkl. tamper-test, clomp-CLI i SDK-paketet (npm-publicering kvar:
+> kräver npm login), demo-seed + exempelrapport + skärmdumpar,
+> säkerhetsgenomgång (lösenordsbyte, TOTP-guard, strikt CSP, hotmodell i
+> SECURITY.md) samt passkeys (WebAuthn) som opt-in via WEBAUTHN_ORIGIN.
 
 ## Vision
 

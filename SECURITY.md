@@ -53,6 +53,10 @@ recorded is invisible — scheduled controls exist to surface that).
 - TOTP (RFC 6238, timing-safe compare, ±1 step) with single-use recovery
   codes; re-configuring active TOTP requires the password. Admins can force a
   reset via `scripts/create-admin.js` (break-glass, DB access required).
+- Passkeys (WebAuthn) are opt-in via `WEBAUTHN_ORIGIN` (needs HTTPS and a
+  stable domain). A passkey login counts as MFA on its own; registering a
+  new passkey requires the account password, so a hijacked session cannot
+  mint itself a durable credential.
 - Sessions: 256-bit random tokens stored hashed, `HttpOnly` +
   `SameSite=Strict` cookies (`COOKIE_SECURE=true` behind TLS).
 - API keys: `clomp_live_` prefixed, stored as SHA-256 hashes, revocable.

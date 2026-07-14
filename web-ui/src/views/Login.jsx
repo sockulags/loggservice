@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { startAuthentication } from '@simplewebauthn/browser';
 import api from '../api';
 
 function Login({ onLogin }) {
@@ -8,6 +9,28 @@ function Login({ onLogin }) {
   const [totpRequired, setTotpRequired] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [passkeysEnabled, setPasskeysEnabled] = useState(false);
+
+  useEffect(() => {
+    api.passkeyConfig()
+      .then(res => setPasskeysEnabled(Boolean(res.data.enabled)))
+      .catch(() => setPasskeysEnabled(false));
+  }, []);
+
+  const passkeyLogin = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { data } = await api.passkeyLoginOptions(email || undefined);
+      const response = await startAuthentication({ optionsJSON: data.options });
+      const verified = await api.passkeyLoginVerify(data.challenge_id, response);
+      onLogin(verified.data.user);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Passkey sign-in failed');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -77,6 +100,12 @@ function Login({ onLogin }) {
         <button className="btn primary" type="submit" disabled={busy}>
           Sign in
         </button>
+
+        {passkeysEnabled && (
+          <button className="btn" type="button" disabled={busy} onClick={passkeyLogin}>
+            Sign in with a passkey
+          </button>
+        )}
 
         <p className="login-hint">
           First run? Create an admin with <code>npm run create-admin -- you@example.com</code> on the server.

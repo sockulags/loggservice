@@ -1,5 +1,101 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { startRegistration } from '@simplewebauthn/browser';
 import api from '../api';
+
+function Passkeys() {
+  const [enabled, setEnabled] = useState(false);
+  const [passkeys, setPasskeys] = useState([]);
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(() => {
+    api.passkeys().then(res => setPasskeys(res.data.passkeys)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.passkeyConfig()
+      .then(res => setEnabled(Boolean(res.data.enabled)))
+      .catch(() => setEnabled(false));
+    load();
+  }, [load]);
+
+  const register = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    try {
+      const { data } = await api.passkeyRegisterOptions(password);
+      const response = await startRegistration({ optionsJSON: data.options });
+      await api.passkeyRegisterVerify(data.challenge_id, response, name || undefined);
+      setPassword('');
+      setName('');
+      setMessage('Passkey registered.');
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to register passkey');
+    }
+  };
+
+  const remove = async (pk) => {
+    await api.passkeyDelete(pk.id);
+    load();
+  };
+
+  return (
+    <div className="card">
+      <h2>Passkeys</h2>
+      {!enabled && (
+        <p className="hint">
+          Not enabled on this instance. Passkeys need HTTPS and a stable domain —
+          set <code>WEBAUTHN_ORIGIN</code> on the server to turn them on.
+          {passkeys.length > 0 && ' Your registered passkeys are listed below but cannot be used until then.'}
+        </p>
+      )}
+      {enabled && (
+        <p className="hint">
+          A passkey signs you in without a password and counts as MFA on its
+          own. Registering one requires your password.
+        </p>
+      )}
+
+      {passkeys.length > 0 && (
+        <table className="admin-table">
+          <thead><tr><th>name</th><th>created</th><th>last used</th><th></th></tr></thead>
+          <tbody>
+            {passkeys.map(pk => (
+              <tr key={pk.id}>
+                <td>{pk.name || 'unnamed passkey'}</td>
+                <td className="mono time">{String(pk.created_at).slice(0, 10)}</td>
+                <td className="mono time">{pk.last_used_at ? String(pk.last_used_at).slice(0, 10) : '—'}</td>
+                <td className="row-actions">
+                  <button className="btn tiny" onClick={() => remove(pk)}>remove</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {enabled && (
+        <form className="inline-form" onSubmit={register}>
+          <input
+            placeholder="name (e.g. work laptop)"
+            value={name} onChange={e => setName(e.target.value)}
+          />
+          <input
+            type="password" placeholder="account password" autoComplete="current-password"
+            value={password} onChange={e => setPassword(e.target.value)} required
+          />
+          <button className="btn primary" type="submit">Add passkey</button>
+        </form>
+      )}
+      {message && <p className="ok-message">{message}</p>}
+      {error && <p className="form-error">{error}</p>}
+    </div>
+  );
+}
 
 function ChangePassword() {
   const [current, setCurrent] = useState('');
@@ -96,6 +192,7 @@ function Security() {
   return (
     <section className="security-view">
       <ChangePassword />
+      <Passkeys />
       <div className="card">
         <h2>Two-factor authentication (TOTP)</h2>
         <p className="hint">

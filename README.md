@@ -68,7 +68,8 @@ flowchart LR
   `ANCHOR_WEBHOOK_URL` in `.env`). An archived checkpoint outside the server
   means even root access cannot rewrite history undetected.
 - **Roles that match an audit** — `admin`, `editor`, `auditor` (read-only + export).
-  Passwords are argon2id, TOTP with single-use recovery codes is built in.
+  Passwords are argon2id, TOTP with single-use recovery codes is built in, and
+  passkeys (WebAuthn) can be enabled on HTTPS installs with `WEBAUTHN_ORIGIN`.
 - **Retention without breaking the chain** — a privileged script prunes old
   events by cutting only at a signed checkpoint, archiving the range to
   verifiable JSONL first, and appending the prune itself to the chain. See

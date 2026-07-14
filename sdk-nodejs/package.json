@@ -6,10 +6,40 @@
   "scripts": {
     "test": "node test/test.js"
   },
-  "keywords": ["audit-trail", "tamper-evident", "compliance", "soc2", "nis2", "sdk"],
+  "keywords": [
+    "audit-trail",
+    "tamper-evident",
+    "compliance",
+    "soc2",
+    "nis2",
+    "sdk"
+  ],
   "author": "Lucas Skog",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.0"
+  },
+  "bin": {
+    "clomp": "bin/clomp.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sockulags/clomp.git",
+    "directory": "sdk-nodejs"
+  },
+  "homepage": "https://github.com/sockulags/clomp#readme",
+  "bugs": {
+    "url": "https://github.com/sockulags/clomp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -56,3 +56,26 @@ await clomp.destroy();
 | `flushInterval` | `2000` ms | periodic flush; `0` disables (flush manually) |
 | `maxQueueLength` | `1000` | bounded queue size |
 | `timeoutMs` | `10000` | per-request timeout |
+
+## CLI
+
+The package ships a dependency-free `clomp` command (Node ≥ 18):
+
+```bash
+npm install -g @clomp/sdk-node
+
+export CLOMP_API_URL=https://clomp.internal.example.com
+export CLOMP_API_KEY=clomp_live_...
+
+# record from cron, CI or a runbook
+clomp record patch.applied --actor service:ci --target system:web-01
+clomp record access.review.completed --actor user:lucas --target scope:all-prod \
+  --evidence ./review-q3.pdf                # uploads and chains the file's sha256
+
+# monitoring-friendly checks (non-zero exit on failure)
+clomp verify                                # 1 if the chain is broken
+clomp schedules --fail-on-overdue           # 1 if a scheduled control is overdue
+
+clomp export --out backup.jsonl             # offline-verifiable export
+clomp catalog                               # seeded SOC 2 / NIS2 action catalog
+```

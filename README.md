@@ -105,6 +105,14 @@ clomp.record('patch.applied', { target: { type: 'system', id: 'web-01' } });
 await clomp.destroy(); // flush before exit
 ```
 
+Or from the shell — cron jobs, CI pipelines, runbooks (`npm i -g @clomp/sdk-node`):
+
+```bash
+CLOMP_API_KEY=clomp_live_... clomp record patch.applied --actor service:ci --target system:web-01
+clomp verify                       # exit 1 if the chain is broken
+clomp schedules --fail-on-overdue  # exit 1 if a scheduled control is overdue
+```
+
 Or plain REST:
 
 ```bash

@@ -145,6 +145,31 @@ async function main() {
   fs.writeFileSync(exportPath, await (await fetch(`${BASE}/api/export/jsonl`, { headers: apiHeaders })).text());
   step('JSONL export verifies offline (partial history, checkpoint-anchored)', spawnSyncVerifyExport(exportPath) === 0);
 
+  // --- the CLI drives the same API -----------------------------------------
+  const CLI = path.join(__dirname, '../../sdk-nodejs/bin/clomp.js');
+  const cliEnv = { ...process.env, CLOMP_API_URL: BASE, CLOMP_API_KEY: key };
+  const cliRecord = require('child_process').spawnSync(
+    process.execPath, [CLI, 'record', 'access.review.completed', '--actor', 'user:e2e', '--target', 'scope:all-prod'],
+    { env: cliEnv, encoding: 'utf8' }
+  );
+  step('CLI records an event', cliRecord.status === 0 && /recorded #\d+/.test(cliRecord.stdout), cliRecord.stdout.trim());
+
+  const scheduleRes = await fetch(`${BASE}/api/schedules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie },
+    body: JSON.stringify({ action: 'access.review.completed', frequency: 'quarterly', grace_days: 14 })
+  });
+  step('schedule created via session', scheduleRes.status === 201);
+
+  const cliSchedules = require('child_process').spawnSync(
+    process.execPath, [CLI, 'schedules', '--fail-on-overdue'], { env: cliEnv, encoding: 'utf8' }
+  );
+  step('CLI lists schedules with no overdue controls',
+    cliSchedules.status === 0 && /access\.review\.completed|ok/.test(cliSchedules.stdout), cliSchedules.stdout.trim());
+
+  const cliVerifyOk = require('child_process').spawnSync(process.execPath, [CLI, 'verify'], { env: cliEnv, encoding: 'utf8' });
+  step('CLI verify exits 0 on an intact chain', cliVerifyOk.status === 0, cliVerifyOk.stdout.trim());
+
   // --- tamper resistance ---------------------------------------------------
   let updateRejected = false;
   try {
@@ -162,6 +187,9 @@ async function main() {
   step('verify pinpoints the tampered event',
     verify3.intact === false && verify3.firstBreak === 7,
     JSON.stringify(verify3));
+
+  const cliVerifyBroken = require('child_process').spawnSync(process.execPath, [CLI, 'verify'], { env: cliEnv, encoding: 'utf8' });
+  step('CLI verify exits 1 on a broken chain', cliVerifyBroken.status === 1, cliVerifyBroken.stderr.trim());
 
   const tamperedPath = path.join(archiveDir, 'export-tampered.jsonl');
   fs.writeFileSync(tamperedPath, await (await fetch(`${BASE}/api/export/jsonl`, { headers: apiHeaders })).text());

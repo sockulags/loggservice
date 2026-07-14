@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish-images:
+    name: Publish Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend image metadata
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/clomp-backend
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Web UI image metadata
+        id: meta-web-ui
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/clomp-web-ui
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push web-ui image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web-ui
+          push: true
+          tags: ${{ steps.meta-web-ui.outputs.tags }}
+          labels: ${{ steps.meta-web-ui.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: publish-images
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PRERELEASE=""
+          case "${GITHUB_REF_NAME}" in
+            *-alpha*|*-beta*|*-rc*) PRERELEASE="--prerelease" ;;
+          esac
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            $PRERELEASE

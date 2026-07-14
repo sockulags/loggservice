@@ -20,6 +20,8 @@ services:
     restart: unless-stopped
 
   backend:
+    # Prebuilt image from GHCR; `docker compose build` still works for local dev
+    image: ghcr.io/sockulags/clomp-backend:${CLOMP_VERSION:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -45,6 +47,7 @@ services:
       retries: 3
 
   web-ui:
+    image: ghcr.io/sockulags/clomp-web-ui:${CLOMP_VERSION:-latest}
     build:
       context: ./web-ui
       dockerfile: Dockerfile

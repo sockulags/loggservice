@@ -1,7 +1,7 @@
 # clomp
 
-[![CI](https://github.com/sockulags/loggservice/actions/workflows/ci.yml/badge.svg)](https://github.com/sockulags/loggservice/actions/workflows/ci.yml)
-[![Security](https://github.com/sockulags/loggservice/actions/workflows/security.yml/badge.svg)](https://github.com/sockulags/loggservice/actions/workflows/security.yml)
+[![CI](https://github.com/sockulags/clomp/actions/workflows/ci.yml/badge.svg)](https://github.com/sockulags/clomp/actions/workflows/ci.yml)
+[![Security](https://github.com/sockulags/clomp/actions/workflows/security.yml/badge.svg)](https://github.com/sockulags/clomp/actions/workflows/security.yml)
 
 **A tamper-evident audit trail for security work.** clomp lets an organization
 *prove* — not just claim — that its security activities happen: access reviews,
@@ -58,13 +58,14 @@ flowchart LR
 ## Quick start (Docker)
 
 ```bash
-git clone https://github.com/sockulags/loggservice.git clomp
+git clone https://github.com/sockulags/clomp.git
 cd clomp
 
 cp .env.example .env
 # set POSTGRES_PASSWORD in .env to a strong value, e.g. from:
 openssl rand -hex 16
 
+# pulls prebuilt images from GHCR; use `docker compose up -d --build` to build locally
 docker compose up -d
 
 # create the first admin (also the break-glass recovery path)

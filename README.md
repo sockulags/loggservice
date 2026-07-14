@@ -52,6 +52,10 @@ flowchart LR
 - **Verifiable without trusting the server** — the JSONL export carries the full
   chain and signed checkpoints; `scripts/verify-export.js` checks it on an
   auditor's laptop with no access to your installation.
+- **External anchoring (opt-in)** — every nightly checkpoint can be emailed to
+  the auditor and/or POSTed to a webhook (`ANCHOR_EMAIL_TO`,
+  `ANCHOR_WEBHOOK_URL` in `.env`). An archived checkpoint outside the server
+  means even root access cannot rewrite history undetected.
 - **Roles that match an audit** — `admin`, `editor`, `auditor` (read-only + export).
   Passwords are argon2id, TOTP with single-use recovery codes is built in.
 - **Scheduled controls** — declare how often an activity must be logged

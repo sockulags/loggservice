@@ -16,6 +16,13 @@ jest.mock('../../logger', () => ({
   info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn(), fatal: jest.fn()
 }));
 
+const mockIsConfigured = jest.fn(() => false);
+const mockAnchorCheckpoint = jest.fn();
+jest.mock('../../services/anchoring', () => ({
+  isConfigured: (...args) => mockIsConfigured(...args),
+  anchorCheckpoint: (...args) => mockAnchorCheckpoint(...args)
+}));
+
 const cron = require('node-cron');
 const { startScheduler, stopScheduler, runCheckpointJob } = require('../../services/scheduler');
 
@@ -43,6 +50,25 @@ describe('scheduler', () => {
     expect(created).toBe(1);
     expect(mockCreateCheckpoint).toHaveBeenCalledWith('t1');
     expect(mockCreateCheckpoint).toHaveBeenCalledWith('t2');
+  });
+
+  test('anchors each created checkpoint when anchoring is configured', async () => {
+    mockIsConfigured.mockReturnValue(true);
+    mockAnchorCheckpoint.mockResolvedValue({ webhook: 'ok', email: 'skipped' });
+    mockPoolQuery.mockResolvedValue({ rows: [{ tenant_id: 't1' }] });
+    mockCreateCheckpoint.mockResolvedValueOnce({ sequence: 5 });
+
+    await runCheckpointJob();
+    expect(mockAnchorCheckpoint).toHaveBeenCalledWith({ sequence: 5 });
+    mockIsConfigured.mockReturnValue(false);
+  });
+
+  test('does not anchor when anchoring is unconfigured', async () => {
+    mockPoolQuery.mockResolvedValue({ rows: [{ tenant_id: 't1' }] });
+    mockCreateCheckpoint.mockResolvedValueOnce({ sequence: 5 });
+
+    await runCheckpointJob();
+    expect(mockAnchorCheckpoint).not.toHaveBeenCalled();
   });
 
   test('the scheduled callback swallows job errors', async () => {

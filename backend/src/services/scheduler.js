@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { getPool } = require('./../database');
 const { createCheckpoint } = require('./checkpoints');
+const anchoring = require('./anchoring');
 const logger = require('../logger');
 
 const CHECKPOINT_SCHEDULE = process.env.CHECKPOINT_SCHEDULE || '0 2 * * *'; // Daily at 02:00 UTC
@@ -13,7 +14,10 @@ async function runCheckpointJob() {
   let created = 0;
   for (const row of rows) {
     const cp = await createCheckpoint(row.tenant_id);
-    if (cp) created++;
+    if (cp) {
+      created++;
+      if (anchoring.isConfigured()) await anchoring.anchorCheckpoint(cp);
+    }
   }
   logger.info({ created }, 'Checkpoint job complete');
   return created;

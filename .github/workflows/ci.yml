@@ -93,6 +93,45 @@ jobs:
         working-directory: ./backend
         run: npm run lint
 
+  e2e-postgres:
+    name: E2E (PostgreSQL + tamper test)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: clomp
+          POSTGRES_PASSWORD: e2e
+          POSTGRES_DB: clomp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clomp -d clomp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run E2E (record → checkpoint → prune → export → tamper)
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://clomp:e2e@localhost:5432/clomp
+        run: node scripts/e2e.js
+
   docker-build:
     name: Build Docker Images
     runs-on: ubuntu-latest

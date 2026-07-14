@@ -31,17 +31,26 @@ function arg(name, fallback = undefined) {
 
 async function main() {
   const keepDays = parseInt(arg('keep-days', ''));
+  const before = arg('before'); // explicit ISO cutoff, e.g. for tests
   const archiveDir = arg('archive-dir', './archives');
   const dryRun = Boolean(arg('dry-run', false));
   const yes = Boolean(arg('yes', false));
 
-  if (!Number.isInteger(keepDays) || keepDays < 30) {
-    console.error('Usage: node scripts/retention-prune.js --keep-days <n≥30> [--archive-dir dir] [--dry-run] [--yes]');
+  let cutoff;
+  if (before) {
+    cutoff = new Date(before);
+    if (Number.isNaN(cutoff.getTime())) {
+      console.error('--before must be a valid ISO 8601 timestamp');
+      process.exit(1);
+    }
+  } else if (Number.isInteger(keepDays) && keepDays >= 30) {
+    cutoff = new Date(Date.now() - keepDays * 24 * 60 * 60 * 1000);
+  } else {
+    console.error('Usage: node scripts/retention-prune.js (--keep-days <n≥30> | --before <iso>) [--archive-dir dir] [--dry-run] [--yes]');
     process.exit(1);
   }
 
-  const cutoff = new Date(Date.now() - keepDays * 24 * 60 * 60 * 1000);
-  console.log(`Cutoff: events recorded before ${cutoff.toISOString()} (${keepDays} days)`);
+  console.log(`Cutoff: events recorded before ${cutoff.toISOString()}`);
 
   await initDatabase();
   try {

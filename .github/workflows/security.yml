@@ -24,12 +24,10 @@ jobs:
       - name: Audit backend dependencies
         working-directory: ./backend
         run: npm audit --audit-level=high
-        continue-on-error: true
       
       - name: Audit web-ui dependencies
         working-directory: ./web-ui
         run: npm audit --audit-level=high
-        continue-on-error: true
 
   codeql:
     name: CodeQL Analysis

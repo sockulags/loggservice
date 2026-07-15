@@ -66,6 +66,36 @@ Downloads the offline-verifiable JSONL export (stdout by default).
 
 Prints the seeded action catalog with SOC 2 / NIS2 mappings.
 
+### `clomp verify-file <export.jsonl>` (offline)
+
+Recomputes the hash chain and validates checkpoint signatures in an export —
+**no server access, no API key**. This is what the auditor runs:
+
+```bash
+npx -y -p @clomp/sdk-node clomp verify-file clomp-export.jsonl
+```
+
+Handles partial exports (retention-pruned history) and exits `1` on any
+break. The canonical-JSON and hashing rules are byte-identical to the
+server's ([specification](/reference/hash-chain)).
+
+### `clomp anchor-check <digest> <export.jsonl>` (offline)
+
+Closes the anchoring loop: takes an archived checkpoint — the anchoring
+email text or the webhook JSON — and an export, then
+
+1. validates the archived checkpoint's Ed25519 signature, and
+2. confirms the export's history at that sequence matches the anchored hash.
+
+A mismatch means the chain was rewritten *after* the checkpoint was
+anchored:
+
+```
+✘ HISTORY MISMATCH: export's event #1280 has hash 9f2ca01b…, the archived
+  checkpoint says db4d5dab… — the chain was rewritten after this checkpoint
+  was anchored
+```
+
 ## Patterns
 
 ```bash

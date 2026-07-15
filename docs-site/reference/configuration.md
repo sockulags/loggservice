@@ -39,6 +39,23 @@ All configuration is environment variables. With Docker Compose, set them in
 | `ANCHOR_EMAIL_TO` | *(unset)* | Mail each checkpoint digest |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | — | SMTP settings for email anchoring |
 
+## Notifications & webhooks
+
+| Variable | Default | Description |
+|---|---|---|
+| `NOTIFY_EMAIL_TO` | *(unset)* | Enables a daily email digest of overdue scheduled controls (uses the SMTP settings above) |
+| `NOTIFY_SCHEDULE` | `0 6 * * *` | Cron (UTC) for the digest |
+| `NOTIFY_INCLUDE_DUE` | `false` | Also include controls that are due but within grace |
+| `EVENT_WEBHOOK_URL` | *(unset)* | POST every appended event as JSON (fire-and-forget) |
+| `EVENT_WEBHOOK_TOKEN` | *(unset)* | Optional `Authorization: Bearer` value |
+| `EVENT_WEBHOOK_ACTIONS` | *(all)* | Comma-separated action prefixes to forward, e.g. `incident.,retention.` |
+
+## Reports
+
+| Variable | Default | Description |
+|---|---|---|
+| `REPORT_ORG_NAME` | *(unset)* | Organization name printed in the PDF report's title block |
+
 ## Evidence
 
 | Variable | Default | Description |

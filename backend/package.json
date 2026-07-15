@@ -1,6 +1,6 @@
 {
   "name": "clomp-backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "clomp — tamper-evident audit trail for security work (SOC 2 / NIS2)",
   "main": "src/server.js",
   "scripts": {

@@ -3,6 +3,9 @@
 Base URL: your installation, e.g. `https://clomp.example.com`. All request
 and response bodies are JSON unless noted.
 
+A machine-readable [OpenAPI 3.1 specification](/openapi.yaml) is available
+for client generation and API tooling.
+
 ## Authentication
 
 Two credential types, resolved per request:
@@ -86,9 +89,11 @@ Download by content hash. Auth: any (auditors included).
 
 Offline-verifiable JSONL (events + signed checkpoints). Auth: any.
 
-### `GET /api/export/report?from=&to=`
+### `GET /api/export/report?from=&to=&framework=`
 
-Audit-ready PDF. Auth: any. See [Exports & reports](/guide/exports).
+Audit-ready PDF. Auth: any. `framework=soc2|nis2` limits the framework
+mappings to one framework; `REPORT_ORG_NAME` prints your organization name
+in the title block. See [Exports & reports](/guide/exports).
 
 ## Schedules
 
@@ -122,6 +127,9 @@ Remove. Auth: session `admin`. Appends `control.schedule.removed`.
 | `POST /api/auth/logout` | session | Destroys the session |
 | `GET /api/auth/me` | session | The signed-in user |
 | `POST /api/auth/change-password` | session | `{ current_password, new_password }` (10–200 chars); revokes all other sessions |
+| `GET /api/auth/sessions` | session | Active sessions (user agent, created, last active, `current` flag) |
+| `DELETE /api/auth/sessions/:id` | session | Revoke one of your own sessions |
+| `POST /api/auth/sessions/revoke-others` | session | Sign out everywhere else |
 | `POST /api/auth/totp/setup` | session | Returns secret + `otpauth://` URL; requires `{ password }` if TOTP is already enabled |
 | `POST /api/auth/totp/enable` | session | `{ code }`; returns 8 single-use recovery codes |
 | `POST /api/auth/totp/disable` | session | `{ password }` |

@@ -29,10 +29,20 @@ network, and the host mapping exists solely for local inspection.
    `WEBAUTHN_ORIGIN` — see [Users & authentication](/operations/authentication).
 6. **Rate limits.** The defaults (`RATE_LIMIT_*`) are sane; tighten rather
    than loosen.
-7. **Defense in depth** (optional). The default setup lets the application's
-   database role own the schema. For stricter separation, run the app as a
-   role with only `INSERT`/`SELECT` on `events` and keep the owning role for
-   migrations and [retention](/operations/retention).
+7. **Overdue reminders & webhooks** (optional). `NOTIFY_EMAIL_TO` mails a
+   daily digest when scheduled controls slip; `EVENT_WEBHOOK_URL` forwards
+   events to Slack relays or a SIEM — see [Integrations](/operations/integrations).
+8. **Defense in depth** (optional). The default setup lets the application's
+   database role own the schema. Create a restricted role instead:
+
+   ```bash
+   DATABASE_URL=postgresql://clomp:owner-pw@host/clomp \
+     node backend/scripts/harden-db-role.js --role clomp_app --password 'strong-pw'
+   ```
+
+   The new role runs the app but cannot `UPDATE`/`DELETE` events or disable
+   the append-only trigger. Keep the owning role for schema upgrades and
+   [retention](/operations/retention); re-run the script after upgrades.
 
 All configuration is environment variables — see the
 [configuration reference](/reference/configuration).

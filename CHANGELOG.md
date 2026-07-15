@@ -4,18 +4,7 @@ All notable changes to clomp. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver
 (pre-1.0: minor bumps may contain breaking changes).
 
-## [Unreleased]
-
-### Added
-- Per-API-key rate limiting on event ingestion (previously per-IP only).
-- SBOM and SLSA provenance attestations on released Docker images.
-- Issue templates and repository metadata.
-
-### Fixed
-- Backend logs now report the real package version (previously hardcoded
-  fallback `1.0.0` outside npm scripts).
-
-## [0.2.0-alpha] — pending
+## [0.2.0-alpha] — 2026-07-15
 
 ### Added
 - **Scheduled controls**: declare how often an activity must be logged;
@@ -36,8 +25,30 @@ All notable changes to clomp. The format follows
   other sessions.
 - **E2E tamper test in CI** against real PostgreSQL: record → checkpoint →
   prune → export → offline verify → tamper → verify pinpoints the break.
-- **Documentation site**: <https://sockulags.github.io/clomp/>.
-- Demo seed script, sample PDF report, UI screenshots.
+- **Documentation site**: <https://sockulags.github.io/clomp/>, with an
+  OpenAPI 3.1 specification.
+- **Offline CLI verification**: `clomp verify-file` (dependency-free chain
+  verification) and `clomp anchor-check` (compare an archived anchoring
+  checkpoint against an export — detects post-anchor history rewrites).
+- **Overdue-control email digest** (`NOTIFY_EMAIL_TO`): daily reminder when
+  scheduled controls slip; silent on green days.
+- **Outgoing event webhooks** (`EVENT_WEBHOOK_URL`): every appended event
+  POSTed as JSON, with action-prefix filtering.
+- **Session management**: active-sessions view with per-session revoke and
+  "sign out everywhere else"; sessions record user agent and last activity.
+- **Restricted database role** (`scripts/harden-db-role.js`): run the app
+  without UPDATE/DELETE on events or the ability to disable triggers.
+- **GitHub Action** (`sockulags/clomp/.github/actions/record@main`) for
+  recording audit events from CI.
+- **Report configuration**: `REPORT_ORG_NAME` title line and
+  `?framework=soc2|nis2` filter.
+- Per-API-key rate limiting on event ingestion (previously per-IP only).
+- SBOM and SLSA provenance attestations on released Docker images.
+- Demo seed script, sample PDF report, UI screenshots; issue templates.
+
+### Fixed
+- Backend logs now report the real package version (previously hardcoded
+  fallback `1.0.0` outside npm scripts).
 
 ### Changed
 - Chain verification anchors retention-pruned history at the matching

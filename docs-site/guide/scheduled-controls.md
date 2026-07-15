@@ -29,7 +29,10 @@ Overdue controls appear:
 clomp schedules --fail-on-overdue   # exit code 1 if anything is overdue
 ```
 
-Run that from cron or CI and route the failure to your alerting.
+Run that from cron or CI and route the failure to your alerting — or let
+clomp push instead: set `NOTIFY_EMAIL_TO` and a daily digest is mailed
+whenever controls are overdue (silent on green days). See
+[Integrations](/operations/integrations#overdue-control-email-digest).
 
 ## The schedule is part of the audit trail
 

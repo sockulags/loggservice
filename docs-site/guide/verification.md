@@ -47,11 +47,14 @@ The web UI shows the same status permanently in the header:
 ## Offline: the auditor's laptop
 
 The JSONL export carries everything needed to verify without any access to
-the server:
+the server — no clone, no API key:
 
 ```bash
-node backend/scripts/verify-export.js clomp-export.jsonl
+npx -y -p @clomp/sdk-node clomp verify-file clomp-export.jsonl
 ```
+
+(Equivalently, `node backend/scripts/verify-export.js clomp-export.jsonl`
+from a checkout.)
 
 ```
 ✔ tenant 26af…: 1284 events verified, chain intact

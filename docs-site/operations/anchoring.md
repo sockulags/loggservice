@@ -59,6 +59,21 @@ future JSONL export: the checkpoint for this sequence must be identical.
 The webhook receives the same data as JSON
 (`{"type":"checkpoint","tenant_id":…,"sequence":…,"hash":…,"signature":…}`).
 
+## Closing the loop: `clomp anchor-check`
+
+When you want to *prove* the anchor holds — during an audit, or on
+suspicion — compare an archived checkpoint against a fresh export:
+
+```bash
+clomp export --out fresh.jsonl
+clomp anchor-check saved-checkpoint-email.txt fresh.jsonl
+```
+
+The command validates the archived signature and confirms the export's
+history at that sequence matches the anchored hash — offline, exit `1` on
+mismatch. It accepts both the email text and the webhook JSON. See the
+[CLI reference](/reference/cli#clomp-anchor-check-digest-export-jsonl-offline).
+
 ## Guidance
 
 - The recipient's only job is to **keep the messages**. A mail archive with

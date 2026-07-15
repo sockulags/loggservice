@@ -56,3 +56,8 @@ WEBAUTHN_ORIGIN=https://clomp.example.com
 256-bit random tokens stored hashed, delivered as `HttpOnly` +
 `SameSite=Strict` cookies (add `Secure` via `COOKIE_SECURE=true`). Default
 lifetime is 12 hours (`SESSION_TTL_HOURS`).
+
+Users see every active session under **Security → Active sessions**
+(browser, signed in, last active), can revoke any single one, and can
+"sign out everywhere else". Changing the password revokes all other
+sessions automatically.

@@ -58,7 +58,10 @@ export const api = {
 
 export const exportUrls = {
   jsonl: (from, to) => `${API_URL}/export/jsonl?${new URLSearchParams({ ...(from && { from }), ...(to && { to }) })}`,
-  report: (from, to) => `${API_URL}/export/report?${new URLSearchParams({ ...(from && { from }), ...(to && { to }) })}`
+  report: (from, to, framework) => `${API_URL}/export/report?${new URLSearchParams({
+    ...(from && { from }), ...(to && { to }),
+    ...(framework && framework !== 'all' && { framework })
+  })}`
 };
 
 export default api;

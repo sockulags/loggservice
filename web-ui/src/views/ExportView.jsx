@@ -4,6 +4,7 @@ import { exportUrls } from '../api';
 function ExportView() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [framework, setFramework] = useState('all');
 
   const fromIso = from ? new Date(from).toISOString() : '';
   const toIso = to ? new Date(to).toISOString() : '';
@@ -28,10 +29,18 @@ function ExportView() {
             To
             <input type="datetime-local" value={to} onChange={e => setTo(e.target.value)} />
           </label>
+          <label>
+            Framework
+            <select value={framework} onChange={e => setFramework(e.target.value)}>
+              <option value="all">SOC 2 + NIS2</option>
+              <option value="soc2">SOC 2 only</option>
+              <option value="nis2">NIS2 only</option>
+            </select>
+          </label>
         </div>
 
         <div className="button-row">
-          <a className="btn primary" href={exportUrls.report(fromIso, toIso)}>
+          <a className="btn primary" href={exportUrls.report(fromIso, toIso, framework)}>
             Download PDF report
           </a>
           <a className="btn" href={exportUrls.jsonl(fromIso, toIso)}>

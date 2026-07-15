@@ -68,11 +68,13 @@ router.get('/jsonl', requireAuth(), async (req, res) => {
   }
 });
 
-// GET /api/export/report?from=&to= — audit-ready PDF report.
+// GET /api/export/report?from=&to=&framework=soc2|nis2 — audit-ready PDF.
 router.get('/report', requireAuth(), async (req, res) => {
   try {
     const tenantId = requestTenantId(req);
     const { from, to } = req.query;
+    const framework = ['soc2', 'nis2'].includes(req.query.framework) ? req.query.framework : null;
+    const orgName = process.env.REPORT_ORG_NAME || null;
     const events = await fetchEvents(tenantId, from, to);
     const verification = await verifyChain(tenantId);
     const { rows: cpRows } = await getPool().query(
@@ -103,10 +105,17 @@ router.get('/report', requireAuth(), async (req, res) => {
     // Title block
     doc.fillColor(ink).font('Helvetica-Bold').fontSize(24).text('clomp', { continued: true })
       .font('Helvetica').fillColor(muted).text('  ·  security activity report');
+    if (orgName) {
+      doc.moveDown(0.15);
+      doc.font('Helvetica-Bold').fontSize(13).fillColor(ink).text(orgName);
+    }
     doc.moveDown(0.3);
     doc.fontSize(10).fillColor(muted)
       .text(`Period: ${from ? new Date(from).toISOString().slice(0, 10) : 'beginning'} — ${to ? new Date(to).toISOString().slice(0, 10) : 'now'}`)
       .text(`Generated: ${new Date().toISOString()}`);
+    if (framework) {
+      doc.text(`Framework view: ${framework === 'soc2' ? 'SOC 2' : 'NIS2'} (mappings for other frameworks omitted)`);
+    }
     doc.moveDown(0.5);
     doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y)
       .strokeColor(accent).lineWidth(2).stroke();
@@ -163,9 +172,12 @@ router.get('/report', requireAuth(), async (req, res) => {
       doc.fillColor(muted).text('No events in the selected period.');
     }
     for (const [action, { count, catalog }] of [...perAction.entries()].sort((a, b) => b[1].count - a[1].count)) {
-      const frameworks = catalog
-        ? `SOC 2: ${catalog.soc2.join(', ')} · NIS2: ${catalog.nis2.join(', ')}`
-        : 'not in catalog — review manually';
+      let frameworks = 'not in catalog — review manually';
+      if (catalog) {
+        if (framework === 'soc2') frameworks = `SOC 2: ${catalog.soc2.join(', ')}`;
+        else if (framework === 'nis2') frameworks = `NIS2: ${catalog.nis2.join(', ')}`;
+        else frameworks = `SOC 2: ${catalog.soc2.join(', ')} · NIS2: ${catalog.nis2.join(', ')}`;
+      }
       doc.fillColor(ink).font('Helvetica-Bold').text(`${action}`, { continued: true })
         .font('Helvetica').fillColor(muted).text(`  ×${count}   ${frameworks}`);
     }

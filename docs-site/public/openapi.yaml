@@ -1,0 +1,459 @@
+openapi: 3.1.0
+info:
+  title: clomp API
+  version: 0.2.0
+  description: >-
+    Tamper-evident audit trail for security work. Events are append-only and
+    hash-chained; exports verify offline. See the hash chain specification in
+    the documentation for the exact hashing rules.
+  license:
+    name: MIT
+    url: https://github.com/sockulags/clomp/blob/main/LICENSE
+externalDocs:
+  description: Full documentation
+  url: https://sockulags.github.io/clomp/
+
+servers:
+  - url: https://clomp.example.com
+    description: Your self-hosted installation
+
+tags:
+  - name: events
+  - name: verification
+  - name: schedules
+  - name: evidence
+  - name: export
+  - name: auth
+  - name: admin
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Machine credential (clomp_live_…), scoped to its tenant.
+    session:
+      type: apiKey
+      in: cookie
+      name: clomp_session
+      description: Browser session obtained via POST /api/auth/login.
+  schemas:
+    Actor:
+      type: object
+      required: [type, id]
+      properties:
+        type: { type: string, enum: [user, service, system] }
+        id: { type: string }
+        name: { type: string }
+        recorded_by:
+          type: object
+          readOnly: true
+          description: Stamped by the server — how the event entered the system.
+    Ref:
+      type: object
+      properties:
+        type: { type: string }
+        id: { type: string }
+        name: { type: string }
+    EvidenceItem:
+      type: object
+      required: [sha256]
+      properties:
+        filename: { type: string }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        size: { type: integer }
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        sequence: { type: integer, description: Per-tenant, monotonic, gap-free }
+        occurred_at: { type: string, format: date-time }
+        recorded_at: { type: string, format: date-time }
+        actor: { $ref: '#/components/schemas/Actor' }
+        action: { type: string, example: access.review.completed }
+        target: { $ref: '#/components/schemas/Ref' }
+        context: { type: object, additionalProperties: true }
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/EvidenceItem' }
+        prev_hash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        hash: { type: string, pattern: '^[0-9a-f]{64}$' }
+    Schedule:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        action: { type: string }
+        title: { type: string, nullable: true }
+        frequency: { type: string, enum: [daily, weekly, monthly, quarterly, yearly] }
+        grace_days: { type: integer, minimum: 0, maximum: 365 }
+        active: { type: boolean }
+        status: { type: string, enum: [ok, due, overdue, inactive] }
+        last_event_at: { type: string, format: date-time, nullable: true }
+        next_due_at: { type: string, format: date-time, nullable: true }
+        deadline_at: { type: string, format: date-time, nullable: true }
+    VerifyResult:
+      type: object
+      properties:
+        intact: { type: boolean }
+        verified: { type: integer }
+        firstBreak: { type: integer, description: Present when intact=false }
+        reason: { type: string, description: Present when intact=false }
+        anchored_at:
+          type: object
+          description: Present when retention pruned history below this point.
+          properties:
+            sequence: { type: integer }
+            hash: { type: string }
+        checkpoint:
+          type: object
+          nullable: true
+          properties:
+            sequence: { type: integer }
+            signed_at: { type: string, format: date-time }
+            signature_valid: { type: boolean }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+security:
+  - apiKey: []
+  - session: []
+
+paths:
+  /api/events:
+    post:
+      tags: [events]
+      summary: Append an event to the chain
+      description: >-
+        API keys and session users with role admin/editor may write. The
+        server stamps actor.recorded_by; occurred_at may be in the past
+        (backfill is visible by design) but at most 1 hour in the future.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, actor]
+              properties:
+                action: { type: string, pattern: '^[a-z0-9_]+(\.[a-z0-9_]+)+$', maxLength: 200 }
+                actor: { $ref: '#/components/schemas/Actor' }
+                target: { $ref: '#/components/schemas/Ref' }
+                context: { type: object, additionalProperties: true }
+                evidence:
+                  type: array
+                  items: { $ref: '#/components/schemas/EvidenceItem' }
+                occurred_at: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Event appended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event: { $ref: '#/components/schemas/Event' }
+                  known_action: { type: boolean }
+        '400': { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Authentication required }
+        '403': { description: Insufficient role }
+    get:
+      tags: [events]
+      summary: List events (keyset pagination)
+      parameters:
+        - { name: action, in: query, schema: { type: string } }
+        - { name: actor_id, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time }, description: On occurred_at }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: before_sequence, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+      responses:
+        '200':
+          description: Newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: array, items: { $ref: '#/components/schemas/Event' } }
+                  has_more: { type: boolean }
+                  next_before_sequence: { type: integer, nullable: true }
+
+  /api/events/catalog:
+    get:
+      tags: [events]
+      summary: The seeded action catalog with SOC 2 / NIS2 tags
+      responses:
+        '200':
+          description: Catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  actions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        action: { type: string }
+                        title: { type: string }
+                        soc2: { type: array, items: { type: string } }
+                        nis2: { type: array, items: { type: string } }
+
+  /api/events/{sequence}:
+    get:
+      tags: [events]
+      summary: One event by chain position
+      parameters:
+        - { name: sequence, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: The event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event: { $ref: '#/components/schemas/Event' }
+        '404': { description: Not found }
+
+  /api/verify:
+    get:
+      tags: [verification]
+      summary: Recompute the hash chain
+      parameters:
+        - { name: from, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: to, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: Verification result incl. latest checkpoint signature
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyResult' }
+
+  /api/schedules:
+    get:
+      tags: [schedules]
+      summary: Scheduled controls with computed status
+      responses:
+        '200':
+          description: All schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schedules: { type: array, items: { $ref: '#/components/schemas/Schedule' } }
+                  overdue: { type: integer }
+    post:
+      tags: [schedules]
+      summary: Create a scheduled control
+      description: Session users (admin/editor) only — never API keys. Appends control.schedule.created to the chain.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, frequency]
+              properties:
+                action: { type: string }
+                title: { type: string, maxLength: 200 }
+                frequency: { type: string, enum: [daily, weekly, monthly, quarterly, yearly] }
+                grace_days: { type: integer, minimum: 0, maximum: 365, default: 0 }
+      responses:
+        '201': { description: Created }
+        '409': { description: A schedule for this action already exists }
+
+  /api/schedules/{id}:
+    patch:
+      tags: [schedules]
+      summary: Update a scheduled control
+      security: [{ session: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                frequency: { type: string, enum: [daily, weekly, monthly, quarterly, yearly] }
+                grace_days: { type: integer }
+                active: { type: boolean }
+      responses:
+        '200': { description: Updated (control.schedule.updated appended) }
+        '404': { description: Not found }
+    delete:
+      tags: [schedules]
+      summary: Remove a scheduled control (admin only)
+      security: [{ session: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Removed (control.schedule.removed appended) }
+        '404': { description: Not found }
+
+  /api/evidence:
+    post:
+      tags: [evidence]
+      summary: Upload an evidence file (content-addressed)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: Embed the result in an event's evidence array
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EvidenceItem' }
+
+  /api/evidence/{sha256}:
+    get:
+      tags: [evidence]
+      summary: Download evidence by content hash
+      parameters:
+        - { name: sha256, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{64}$' } }
+      responses:
+        '200': { description: The file }
+        '404': { description: Not found }
+
+  /api/export/jsonl:
+    get:
+      tags: [export]
+      summary: Offline-verifiable JSONL export
+      description: One JSON object per line — events then signed checkpoints. Verify with `clomp verify-file`.
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: application/x-ndjson stream
+          content:
+            application/x-ndjson: {}
+
+  /api/export/report:
+    get:
+      tags: [export]
+      summary: Audit-ready PDF report
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: framework, in: query, schema: { type: string, enum: [soc2, nis2] }, description: Limit framework mappings to one framework }
+      responses:
+        '200':
+          description: PDF
+          content:
+            application/pdf: {}
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in (sets the session cookie)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                totp: { type: string, description: TOTP or recovery code when enabled }
+      responses:
+        '200': { description: Signed in }
+        '401': { description: Invalid credentials, or totp_required=true }
+
+  /api/auth/sessions:
+    get:
+      tags: [auth]
+      summary: The signed-in user's active sessions
+      security: [{ session: [] }]
+      responses:
+        '200': { description: Sessions with user_agent, created_at, last_used_at, current flag }
+
+  /api/auth/change-password:
+    post:
+      tags: [auth]
+      summary: Change own password (revokes all other sessions)
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 10, maxLength: 200 }
+      responses:
+        '200': { description: Changed }
+        '401': { description: Current password incorrect }
+
+  /api/users:
+    get:
+      tags: [admin]
+      summary: List users (admin)
+      security: [{ session: [] }]
+      responses:
+        '200': { description: Users }
+    post:
+      tags: [admin]
+      summary: Create a user (admin) — returns a one-time initial password
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, role]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                role: { type: string, enum: [admin, editor, auditor] }
+      responses:
+        '201': { description: Created with initial_password }
+
+  /api/keys:
+    get:
+      tags: [admin]
+      summary: List API keys (admin)
+      security: [{ session: [] }]
+      responses:
+        '200': { description: Keys (prefixes only) }
+    post:
+      tags: [admin]
+      summary: Create an API key (admin) — the full key is returned exactly once
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        '201': { description: Created — save the key now }
+
+  /health:
+    get:
+      tags: [verification]
+      summary: Liveness + database connectivity
+      security: []
+      responses:
+        '200': { description: ok }
+        '503': { description: database unreachable }

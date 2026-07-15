@@ -1,6 +1,6 @@
 {
   "name": "@clomp/sdk-node",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node.js client for clomp — tamper-evident audit trail for security work",
   "main": "src/index.js",
   "scripts": {

@@ -79,3 +79,16 @@ clomp schedules --fail-on-overdue           # 1 if a scheduled control is overdu
 clomp export --out backup.jsonl             # offline-verifiable export
 clomp catalog                               # seeded SOC 2 / NIS2 action catalog
 ```
+
+### Offline verification (no server, no API key)
+
+```bash
+# recompute the chain in an export — what the auditor runs
+clomp verify-file clomp-export.jsonl
+
+# compare an archived anchoring checkpoint (email text or webhook JSON)
+# against an export: detects history rewritten after the anchor
+clomp anchor-check checkpoint-digest.txt clomp-export.jsonl
+```
+
+Both exit `0` on success and `1` on any mismatch.

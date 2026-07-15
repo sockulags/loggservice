@@ -18,8 +18,22 @@ const mockPool = {
       return { rows: store.users.filter(u => u.email === params[0]) };
     }
     if (sql.includes('INSERT INTO sessions')) {
-      store.sessions.push({ id: params[0], user_id: params[1], token_hash: params[2], expires_at: params[3] });
+      store.sessions.push({
+        id: params[0], user_id: params[1], token_hash: params[2], expires_at: params[3],
+        user_agent: params[4] ?? null, created_at: new Date(), last_used_at: new Date()
+      });
       return { rows: [] };
+    }
+    if (sql.includes('UPDATE sessions SET last_used_at')) {
+      return { rows: [] };
+    }
+    if (sql.includes('SELECT id, token_hash, user_agent')) {
+      return { rows: store.sessions.filter(s => s.user_id === params[0]) };
+    }
+    if (sql.includes('DELETE FROM sessions WHERE id = $1 AND user_id = $2')) {
+      const before = store.sessions.length;
+      store.sessions = store.sessions.filter(s => !(s.id === params[0] && s.user_id === params[1]));
+      return { rowCount: before - store.sessions.length, rows: [] };
     }
     if (sql.includes('DELETE FROM sessions WHERE token_hash')) {
       store.sessions = store.sessions.filter(s => s.token_hash !== params[0]);
@@ -48,8 +62,9 @@ const mockPool = {
       return { rows: [] };
     }
     if (sql.includes('DELETE FROM sessions WHERE user_id = $1 AND token_hash != $2')) {
+      const before = store.sessions.length;
       store.sessions = store.sessions.filter(s => !(s.user_id === params[0] && s.token_hash !== params[1]));
-      return { rows: [] };
+      return { rowCount: before - store.sessions.length, rows: [] };
     }
     if (sql.includes('UPDATE users SET totp_secret')) {
       const user = store.users.find(u => u.id === params[1]);
@@ -290,6 +305,59 @@ describe('auth routes', () => {
 
     expect((await request(app).get('/api/auth/me').set('Cookie', cookie2)).status).toBe(200);
     expect((await request(app).get('/api/auth/me').set('Cookie', cookie1)).status).toBe(401);
+  });
+
+  test('sessions can be listed, revoked individually and revoked in bulk', async () => {
+    const s1 = await request(app).post('/api/auth/login')
+      .set('User-Agent', 'Chrome-on-laptop')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const s2 = await request(app).post('/api/auth/login')
+      .set('User-Agent', 'Firefox-on-desktop')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const cookie2 = s2.headers['set-cookie'][0].split(';')[0];
+
+    const list = await request(app).get('/api/auth/sessions').set('Cookie', cookie2);
+    expect(list.status).toBe(200);
+    expect(list.body.sessions).toHaveLength(2);
+    const current = list.body.sessions.find(s => s.current);
+    const other = list.body.sessions.find(s => !s.current);
+    expect(current.user_agent).toBe('Firefox-on-desktop');
+    expect(other.user_agent).toBe('Chrome-on-laptop');
+    // token hashes never leak
+    expect(JSON.stringify(list.body)).not.toContain('token');
+
+    // revoke the other session by id
+    const del = await request(app).delete(`/api/auth/sessions/${other.id}`).set('Cookie', cookie2);
+    expect(del.status).toBe(200);
+    const cookie1 = s1.headers['set-cookie'][0].split(';')[0];
+    expect((await request(app).get('/api/auth/me').set('Cookie', cookie1)).status).toBe(401);
+
+    // bulk: sign in twice more, revoke-others keeps only the caller
+    await request(app).post('/api/auth/login').send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const bulk = await request(app).post('/api/auth/sessions/revoke-others').set('Cookie', cookie2);
+    expect(bulk.status).toBe(200);
+    expect(bulk.body.revoked).toBe(1);
+    expect((await request(app).get('/api/auth/me').set('Cookie', cookie2)).status).toBe(200);
+  });
+
+  test('a session cannot revoke another user\'s session', async () => {
+    store.users.push({
+      id: 'u2', tenant_id: TENANT, email: 'other@example.com', name: 'Other',
+      role: 'editor', password_hash: passwordHash,
+      totp_secret: null, totp_enabled: false, disabled: false
+    });
+    const mine = await request(app).post('/api/auth/login')
+      .send({ email: 'lucas@example.com', password: 'correct-horse' });
+    const theirs = await request(app).post('/api/auth/login')
+      .send({ email: 'other@example.com', password: 'correct-horse' });
+    const myCookie = mine.headers['set-cookie'][0].split(';')[0];
+    const theirCookie = theirs.headers['set-cookie'][0].split(';')[0];
+
+    const theirId = (await request(app).get('/api/auth/sessions').set('Cookie', theirCookie))
+      .body.sessions[0].id;
+    const res = await request(app).delete(`/api/auth/sessions/${theirId}`).set('Cookie', myCookie);
+    expect(res.status).toBe(404);
+    expect((await request(app).get('/api/auth/me').set('Cookie', theirCookie)).status).toBe(200);
   });
 
   test('change-password requires authentication', async () => {

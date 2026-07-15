@@ -37,6 +37,13 @@ async function attachSession(req, res, next) {
     if (rows.length) {
       req.user = rows[0];
       req.sessionToken = token;
+      // Activity timestamp for the sessions view, throttled to one write
+      // per 5 minutes per session; fire-and-forget.
+      getPool().query(
+        `UPDATE sessions SET last_used_at = now()
+         WHERE token_hash = $1 AND (last_used_at IS NULL OR last_used_at < now() - interval '5 minutes')`,
+        [hashToken(token)]
+      ).catch(() => {});
     }
     return next();
   } catch (err) {
@@ -57,12 +64,13 @@ function requireRole(...roles) {
   };
 }
 
-async function createSession(userId) {
+async function createSession(userId, userAgent = null) {
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 3600 * 1000);
   await getPool().query(
-    'INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)',
-    [crypto.randomUUID(), userId, hashToken(token), expiresAt.toISOString()]
+    'INSERT INTO sessions (id, user_id, token_hash, expires_at, user_agent, last_used_at) VALUES ($1, $2, $3, $4, $5, now())',
+    [crypto.randomUUID(), userId, hashToken(token), expiresAt.toISOString(),
+      userAgent ? String(userAgent).slice(0, 300) : null]
   );
   return { token, expiresAt };
 }

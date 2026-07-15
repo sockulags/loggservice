@@ -37,8 +37,9 @@ recorded is invisible — scheduled controls exist to surface that).
 - **The application's Postgres role owns the schema** in the default
   docker-compose setup, so anyone holding `DATABASE_URL` credentials can
   disable the append-only trigger. They still cannot evade the hash chain or
-  signed checkpoints — but for defense in depth, production deployments can
-  run the app as a non-owner role with only `INSERT`/`SELECT` on `events`.
+  signed checkpoints — but for defense in depth, run
+  `backend/scripts/harden-db-role.js` to create a non-owner role without
+  `UPDATE`/`DELETE` on `events` and point the backend at it.
 - **Checkpoint signing keys live on the server's disk** (`KEY_DIR`). An
   attacker with full host access can forge checkpoints from that moment on,
   but cannot rewrite history that predates the last externally anchored

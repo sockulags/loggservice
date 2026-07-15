@@ -284,7 +284,7 @@ router.post('/login/verify', requireWebAuthn, async (req, res) => {
       [verification.authenticationInfo.newCounter, passkey.id]
     );
 
-    const { token, expiresAt } = await createSession(passkey.user_id);
+    const { token, expiresAt } = await createSession(passkey.user_id, req.headers['user-agent']);
     setSessionCookie(res, token, expiresAt);
     res.json({ user: { id: passkey.user_id, email: passkey.email, name: passkey.name, role: passkey.role } });
   } catch (error) {

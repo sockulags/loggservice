@@ -141,6 +141,63 @@ function ChangePassword() {
   );
 }
 
+function Sessions() {
+  const [sessions, setSessions] = useState([]);
+  const [message, setMessage] = useState(null);
+
+  const load = useCallback(() => {
+    api.sessions().then(res => setSessions(res.data.sessions)).catch(() => {});
+  }, []);
+  useEffect(load, [load]);
+
+  const revoke = async (s) => {
+    await api.revokeSession(s.id);
+    load();
+  };
+
+  const revokeOthers = async () => {
+    const res = await api.revokeOtherSessions();
+    setMessage(`Signed out ${res.data.revoked} other session(s).`);
+    load();
+  };
+
+  const when = (t) => (t ? String(t).slice(0, 16).replace('T', ' ') : '—');
+
+  return (
+    <div className="card">
+      <h2>Active sessions</h2>
+      <p className="hint">
+        Everywhere your account is signed in. Revoke anything you don't
+        recognize — and change your password.
+      </p>
+      <table className="admin-table">
+        <thead><tr><th>browser</th><th>signed in</th><th>last active</th><th></th></tr></thead>
+        <tbody>
+          {sessions.map(s => (
+            <tr key={s.id}>
+              <td>
+                {s.user_agent ? s.user_agent.slice(0, 60) : 'unknown'}
+                {s.current && <span className="role-chip" style={{ marginLeft: '0.5rem' }}>this session</span>}
+              </td>
+              <td className="mono time">{when(s.created_at)}</td>
+              <td className="mono time">{when(s.last_used_at)}</td>
+              <td className="row-actions">
+                {!s.current && <button className="btn tiny" onClick={() => revoke(s)}>revoke</button>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {sessions.length > 1 && (
+        <div className="button-row">
+          <button className="btn" onClick={revokeOthers}>Sign out everywhere else</button>
+        </div>
+      )}
+      {message && <p className="ok-message">{message}</p>}
+    </div>
+  );
+}
+
 function Security() {
   const [setup, setSetup] = useState(null);
   const [code, setCode] = useState('');
@@ -192,6 +249,7 @@ function Security() {
   return (
     <section className="security-view">
       <ChangePassword />
+      <Sessions />
       <Passkeys />
       <div className="card">
         <h2>Two-factor authentication (TOTP)</h2>

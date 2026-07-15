@@ -67,7 +67,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       }
     }
 
-    const { token, expiresAt } = await createSession(user.id);
+    const { token, expiresAt } = await createSession(user.id, req.headers['user-agent']);
     setSessionCookie(res, token, expiresAt);
     return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   } catch (error) {
@@ -93,6 +93,62 @@ router.post('/logout', async (req, res) => {
 // GET /api/auth/me
 router.get('/me', requireRole(), (req, res) => {
   res.json({ user: req.user });
+});
+
+// GET /api/auth/sessions — the signed-in user's active sessions.
+router.get('/sessions', requireRole(), async (req, res) => {
+  try {
+    const currentHash = require('../middleware/session').hashToken(req.sessionToken);
+    const { rows } = await getPool().query(
+      `SELECT id, token_hash, user_agent, created_at, last_used_at, expires_at
+       FROM sessions WHERE user_id = $1 AND expires_at > now()
+       ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+    res.json({
+      sessions: rows.map(s => ({
+        id: s.id,
+        user_agent: s.user_agent,
+        created_at: s.created_at,
+        last_used_at: s.last_used_at,
+        expires_at: s.expires_at,
+        current: s.token_hash === currentHash
+      }))
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Error listing sessions');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/auth/sessions/:id — revoke one of your own sessions.
+router.delete('/sessions/:id', requireRole(), async (req, res) => {
+  try {
+    const { rowCount } = await getPool().query(
+      'DELETE FROM sessions WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Session not found' });
+    res.json({ revoked: true });
+  } catch (error) {
+    logger.error({ err: error }, 'Error revoking session');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/sessions/revoke-others — sign out everywhere else.
+router.post('/sessions/revoke-others', requireRole(), async (req, res) => {
+  try {
+    const currentHash = require('../middleware/session').hashToken(req.sessionToken);
+    const { rowCount } = await getPool().query(
+      'DELETE FROM sessions WHERE user_id = $1 AND token_hash != $2',
+      [req.user.id, currentHash]
+    );
+    res.json({ revoked: rowCount });
+  } catch (error) {
+    logger.error({ err: error }, 'Error revoking other sessions');
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // POST /api/auth/change-password { current_password, new_password }

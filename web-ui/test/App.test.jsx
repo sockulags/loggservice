@@ -26,6 +26,9 @@ vi.mock('../src/api', () => {
     createKey: vi.fn(),
     revokeKey: vi.fn(),
     changePassword: vi.fn(),
+    sessions: vi.fn(),
+    revokeSession: vi.fn(),
+    revokeOtherSessions: vi.fn(),
     passkeyConfig: vi.fn(),
     passkeys: vi.fn(),
     passkeyRegisterOptions: vi.fn(),
@@ -80,6 +83,7 @@ describe('App', () => {
     // must handle the rejection gracefully.
     api.passkeyConfig.mockRejectedValue(new Error('not configured'));
     api.passkeys.mockResolvedValue({ data: { passkeys: [] } });
+    api.sessions.mockResolvedValue({ data: { sessions: [] } });
   });
 
   it('shows the login screen when there is no session', async () => {

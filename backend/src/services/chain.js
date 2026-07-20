@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { getPool } = require('../database');
 const { GENESIS_HASH, eventHash } = require('../hashchain');
+const metrics = require('../metrics');
 
 /**
  * Normalize a JS Date (or ISO string) to the exact string representation that
@@ -82,6 +83,8 @@ async function appendEvent(tenantId, { occurredAt, actor, action, target, contex
 
     await client.query('COMMIT');
 
+    metrics.recordEventIngested(tenantId);
+
     // Outgoing webhook, after commit and without awaiting: an unreachable
     // receiver must never fail or slow down recording.
     const webhooks = require('./eventWebhooks');
@@ -107,6 +110,24 @@ async function appendEvent(tenantId, { occurredAt, actor, action, target, contex
  * Streams in batches so verification stays flat in memory.
  */
 async function verifyChain(tenantId, fromSequence = 1, toSequence = null) {
+  // Metric semantics: a partial range can be intact while the full chain is
+  // broken, so only a full verification may report "ok". A failure is
+  // recorded whether full or partial — except 'missing predecessor event',
+  // which just means the requested range starts past the chain (from/to are
+  // caller-controlled); recording that would let an out-of-range query raise
+  // a false tampering alarm. A real mid-chain deletion still surfaces as a
+  // sequence gap on any full verification.
+  const fullVerify = fromSequence <= 1 && toSequence === null;
+  const result = await verifyChainRange(tenantId, fromSequence, toSequence);
+  if (!result.intact && result.reason !== 'missing predecessor event') {
+    metrics.recordChainVerification(tenantId, false);
+  } else if (result.intact && fullVerify) {
+    metrics.recordChainVerification(tenantId, true);
+  }
+  return result;
+}
+
+async function verifyChainRange(tenantId, fromSequence, toSequence) {
   const pool = getPool();
   const BATCH = 1000;
 

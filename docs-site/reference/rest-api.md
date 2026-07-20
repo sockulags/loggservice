@@ -160,6 +160,7 @@ return **501**.
 | `GET /api/keys` | admin | |
 | `POST /api/keys` | admin | `{ name }`; the full key is returned exactly once |
 | `DELETE /api/keys/:id` | admin | Revoke |
+| `GET /api/webhook-deliveries` | admin | Outgoing webhook delivery log; filters `status`, `kind`, keyset-paginated via `before_id` |
 
 ## Health
 

@@ -1,5 +1,35 @@
 # Getting started
 
+## Try it in 2 minutes (demo mode)
+
+The fastest way to see clomp working — no configuration, no `.env`:
+
+```bash
+git clone https://github.com/sockulags/clomp.git
+cd clomp
+docker compose -f docker-compose.demo.yml up -d
+```
+
+Open <http://localhost:8080> and log in:
+
+| | |
+|---|---|
+| Email | `demo@clomp.local` |
+| Password | `clomp-demo` |
+
+The demo bootstraps itself on first start: it creates the demo admin and
+seeds ~6 months of realistic security activity, four scheduled controls
+(one deliberately overdue) and a signed checkpoint. Ledger, Schedules,
+Verify and Export all have data from the first second.
+
+::: danger DEMO MODE — not for production
+The Postgres password and admin credentials in `docker-compose.demo.yml`
+are hardcoded and public by design. Never expose a demo instance beyond
+your own machine. Tear it down with
+`docker compose -f docker-compose.demo.yml down -v` and follow the
+quick start below for a real installation.
+:::
+
 ## Quick start with Docker
 
 Prebuilt images are published to GHCR on every release.

@@ -14,19 +14,16 @@
 const crypto = require('crypto');
 require('dotenv').config();
 
-async function main() {
-  const [email, name] = process.argv.slice(2);
-  if (!email) {
-    console.error('Usage: node scripts/create-admin.js <email> [name]');
-    process.exit(1);
-  }
-
+/**
+ * Create an admin user with the given password, or reset an existing user to
+ * it (admin role, TOTP off, all sessions and recovery codes revoked).
+ * Assumes initDatabase() has already run. Returns { created, email }.
+ */
+async function upsertAdmin(email, name, password) {
   const argon2 = require('argon2');
-  const { initDatabase, getPool, getDefaultTenantId, closeDatabase } = require('../src/database');
+  const { getPool, getDefaultTenantId } = require('../src/database');
 
-  await initDatabase();
   const pool = getPool();
-  const password = crypto.randomBytes(12).toString('base64url');
   const passwordHash = await argon2.hash(password);
   const normalizedEmail = String(email).toLowerCase();
 
@@ -41,14 +38,34 @@ async function main() {
     );
     await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
     await pool.query('DELETE FROM recovery_codes WHERE user_id = $1', [userId]);
-    console.log(`\n♻️  Reset existing user ${normalizedEmail} (admin, TOTP off, sessions revoked)`);
-  } else {
-    await pool.query(
-      `INSERT INTO users (id, tenant_id, email, name, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5, 'admin')`,
-      [crypto.randomUUID(), getDefaultTenantId(), normalizedEmail, name || normalizedEmail, passwordHash]
-    );
+    return { created: false, email: normalizedEmail };
+  }
+
+  await pool.query(
+    `INSERT INTO users (id, tenant_id, email, name, password_hash, role)
+     VALUES ($1, $2, $3, $4, $5, 'admin')`,
+    [crypto.randomUUID(), getDefaultTenantId(), normalizedEmail, name || normalizedEmail, passwordHash]
+  );
+  return { created: true, email: normalizedEmail };
+}
+
+async function main() {
+  const [email, name] = process.argv.slice(2);
+  if (!email) {
+    console.error('Usage: node scripts/create-admin.js <email> [name]');
+    process.exit(1);
+  }
+
+  const { initDatabase, closeDatabase } = require('../src/database');
+
+  await initDatabase();
+  const password = crypto.randomBytes(12).toString('base64url');
+  const { created, email: normalizedEmail } = await upsertAdmin(email, name, password);
+
+  if (created) {
     console.log(`\n✅ Created admin user ${normalizedEmail}`);
+  } else {
+    console.log(`\n♻️  Reset existing user ${normalizedEmail} (admin, TOTP off, sessions revoked)`);
   }
 
   console.log(`\n   One-time password: ${password}`);
@@ -57,7 +74,11 @@ async function main() {
   await closeDatabase();
 }
 
-main().catch(err => {
-  console.error('❌ Failed:', err.message);
-  process.exit(1);
-});
+module.exports = { upsertAdmin };
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error('❌ Failed:', err.message);
+    process.exit(1);
+  });
+}

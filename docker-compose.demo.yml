@@ -1,0 +1,114 @@
+# =============================================================================
+# clomp DEMO MODE — NOT FOR PRODUCTION
+# =============================================================================
+# One command, zero configuration, no .env needed:
+#
+#   docker compose -f docker-compose.demo.yml up -d
+#
+# Builds the images locally, starts PostgreSQL + backend + web UI, creates a
+# demo admin (demo@clomp.local / clomp-demo) and seeds ~6 months of demo data
+# with scheduled controls (one deliberately overdue) and a signed checkpoint.
+# The web UI is only started once the bootstrap has finished, so the demo is
+# fully populated the moment http://localhost:8080 answers.
+#
+#   Web UI:  http://localhost:8080
+#   API:     http://localhost:3001
+#
+# The Postgres password below is intentionally hardcoded and public. Everything
+# here is throwaway: `docker compose -f docker-compose.demo.yml down -v` wipes
+# it. For a real installation use docker-compose.yml and follow the docs.
+#
+# NOTE: this file is intentionally standalone (not a compose override of
+# docker-compose.yml, whose required POSTGRES_PASSWORD would defeat the
+# zero-config goal). It mirrors the service layout there — keep them in sync.
+# =============================================================================
+
+name: clomp-demo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: clomp-demo-postgres
+    environment:
+      POSTGRES_DB: clomp
+      POSTGRES_USER: clomp
+      # DEMO ONLY — hardcoded and public by design, never reuse in production
+      POSTGRES_PASSWORD: clomp-demo-only
+    # No host port mapping: the database is only reachable on the compose network
+    volumes:
+      - demo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clomp -d clomp"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    image: clomp-demo-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clomp-demo-backend
+    ports:
+      - target: 3000
+        published: "${CLOMP_DEMO_API_PORT:-3001}"
+        protocol: tcp
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://clomp:clomp-demo-only@postgres:5432/clomp
+      - ALLOWED_ORIGINS=http://localhost:${CLOMP_DEMO_UI_PORT:-8080},http://localhost:5173
+    volumes:
+      - demo-backend-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  # One-shot: creates the demo admin and seeds demo data, then exits.
+  # Logs: docker compose -f docker-compose.demo.yml logs demo-bootstrap
+  demo-bootstrap:
+    # Same image the backend service builds — only the command differs
+    image: clomp-demo-backend
+    container_name: clomp-demo-bootstrap
+    command: ["node", "scripts/bootstrap-demo.js"]
+    environment:
+      - DATABASE_URL=postgresql://clomp:clomp-demo-only@postgres:5432/clomp
+      - DEMO_UI_PORT=${CLOMP_DEMO_UI_PORT:-8080}
+      - DEMO_API_PORT=${CLOMP_DEMO_API_PORT:-3001}
+    volumes:
+      # Share the backend's data volume so the checkpoint signing key the seed
+      # generates is the same keypair the backend uses
+      - demo-backend-data:/app/data
+      # The production image deliberately ships without scripts/ (they can
+      # create admins and seed/prune data) — mount them from the checkout
+      - ./backend/scripts:/app/scripts:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: "no"
+
+  web-ui:
+    build:
+      context: ./web-ui
+      dockerfile: Dockerfile
+    container_name: clomp-demo-web-ui
+    ports:
+      - target: 80
+        published: "${CLOMP_DEMO_UI_PORT:-8080}"
+        protocol: tcp
+    depends_on:
+      backend:
+        condition: service_healthy
+      # Don't serve the UI until the demo admin + data exist; if the
+      # bootstrap fails, `up` fails loudly instead of showing an empty demo
+      demo-bootstrap:
+        condition: service_completed_successfully
+
+volumes:
+  demo-postgres-data:
+  demo-backend-data:

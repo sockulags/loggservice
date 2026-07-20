@@ -7,6 +7,7 @@ const pinoHttp = require('pino-http');
 require('dotenv').config();
 
 const logger = require('./logger');
+const metrics = require('./metrics');
 const { initDatabase, getPool } = require('./database');
 const { attachSession } = require('./middleware/session');
 const { attachApiKey } = require('./middleware/apikey');
@@ -75,6 +76,12 @@ const healthCheckLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Request duration histogram — only mounted when metrics are enabled so the
+// default path pays no per-request overhead.
+if (metrics.isEnabled()) {
+  app.use(metrics.httpMetricsMiddleware);
+}
+
 app.use(limiter);
 
 // Security headers with Helmet
@@ -97,7 +104,12 @@ app.use(helmet({
 app.use(pinoHttp({
   logger,
   autoLogging: {
-    ignore: (req) => req.url === '/health'
+    // Compare the path without any query string so probes/scrapes with
+    // parameters do not slip past the ignore list.
+    ignore: (req) => {
+      const path = req.url.split('?')[0];
+      return path === '/health' || path === '/metrics';
+    }
   }
 }));
 
@@ -129,6 +141,14 @@ app.get('/health', healthCheckLimiter, async (req, res) => {
     });
   }
 });
+
+// Prometheus metrics — opt-in (METRICS_ENABLED=true) because the output
+// exposes operational details (tenant ids, ingestion rates). Optionally
+// protected with a bearer token via METRICS_TOKEN; see docs on monitoring.
+if (metrics.isEnabled()) {
+  logger.info('Prometheus metrics enabled at /metrics');
+  app.get('/metrics', metrics.metricsHandler);
+}
 
 // API routes
 app.use('/api/auth', authRoutes);

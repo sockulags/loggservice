@@ -185,6 +185,39 @@ describe('chain service', () => {
     expect(missing.reason).toBe('missing predecessor event');
   });
 
+  test('verifyChain drives the last-verify metric only for genuine outcomes', async () => {
+    const metrics = require('../../metrics');
+    const gauge = metrics.register.getSingleMetric('clomp_chain_last_verify_ok');
+    const gaugeValue = async () => {
+      const { values } = await gauge.get();
+      return values.find(v => v.labels.tenant_id === TENANT)?.value;
+    };
+    gauge.reset();
+
+    for (let i = 0; i < 3; i++) {
+      await appendEvent(TENANT, { actor: { type: 'user', id: 'u1' }, action: 'patch.applied' });
+    }
+
+    // Out-of-range request (missing predecessor) is benign: no recording,
+    // so a stray ?from= query cannot raise a false tampering alarm.
+    const missing = await verifyChain(TENANT, 999);
+    expect(missing.reason).toBe('missing predecessor event');
+    expect(await gaugeValue()).toBeUndefined();
+
+    // An intact partial verify does not claim full-chain health.
+    await verifyChain(TENANT, 2, 3);
+    expect(await gaugeValue()).toBeUndefined();
+
+    // A full verify records success...
+    await verifyChain(TENANT);
+    expect(await gaugeValue()).toBe(1);
+
+    // ...and a genuine break (even in a partial range) records failure.
+    store.events[1].action = 'tampered';
+    await verifyChain(TENANT, 2, 3);
+    expect(await gaugeValue()).toBe(0);
+  });
+
   test('verifyChain on an empty chain is intact with zero verified', async () => {
     const result = await verifyChain(TENANT);
     expect(result).toEqual({ intact: true, verified: 0 });

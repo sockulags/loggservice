@@ -2,6 +2,7 @@
  * Minimal RFC 6238 TOTP (SHA-1, 6 digits, 30s steps) — no dependency needed.
  */
 const crypto = require('crypto');
+const secureEquals = require('./secureEquals');
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -69,7 +70,7 @@ function verifyTotp(secretBase32, token, timestampMs = Date.now(), stepSeconds =
   const counter = Math.floor(timestampMs / 1000 / stepSeconds);
   for (const c of [counter, counter - 1, counter + 1]) {
     const expected = hotp(secretBase32, c);
-    if (crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(token)))) {
+    if (secureEquals(expected, String(token))) {
       return true;
     }
   }

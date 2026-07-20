@@ -4,7 +4,7 @@ jest.mock('../../database', () => ({
   getPool: () => ({ query: mockPoolQuery })
 }));
 
-const { nextDue, scheduleStatus, listWithStatus } = require('../../services/schedules');
+const { nextDue, scheduleStatus, listWithStatus, overdueCountByTenant } = require('../../services/schedules');
 
 const TENANT = 'aaaaaaaa-0000-0000-0000-000000000001';
 
@@ -89,6 +89,37 @@ describe('listWithStatus', () => {
     const backup = list.find(s => s.action === 'backup.tested');
     expect(backup.status).toBe('overdue'); // never logged since 2026-01-01
     expect(backup.last_event_at).toBeNull();
+  });
+
+  test('overdueCountByTenant counts overdue controls per tenant, keeping zeros', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [
+          // Overdue: never logged since 2026-01-01 (quarterly + 14d grace).
+          scheduleRow(),
+          // Ok: logged recently (see lastRows below).
+          scheduleRow({ id: 's2', action: 'backup.tested' }),
+          // Other tenant with nothing overdue reports an explicit zero.
+          scheduleRow({ id: 's3', tenant_id: 'tenant-2' })
+        ]
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { tenant_id: TENANT, action: 'backup.tested', last_at: new Date('2026-07-01T00:00:00Z') },
+          { tenant_id: 'tenant-2', action: 'access.review.completed', last_at: new Date('2026-07-01T00:00:00Z') }
+        ]
+      });
+
+    const counts = await overdueCountByTenant(new Date('2026-07-14T00:00:00Z'));
+    expect(counts.get(TENANT)).toBe(1);
+    expect(counts.get('tenant-2')).toBe(0);
+    expect(mockPoolQuery).toHaveBeenCalledTimes(2);
+  });
+
+  test('overdueCountByTenant skips the events query when there are no active schedules', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await overdueCountByTenant()).toEqual(new Map());
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1);
   });
 
   test('inactive schedules are reported but not evaluated', async () => {

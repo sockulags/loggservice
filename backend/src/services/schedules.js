@@ -81,4 +81,36 @@ async function listWithStatus(tenantId, now = new Date()) {
   });
 }
 
-module.exports = { FREQUENCIES, nextDue, scheduleStatus, listWithStatus, rowToSchedule };
+/**
+ * Overdue active controls per tenant, across all tenants (for /metrics).
+ * Tenants with active schedules but nothing overdue report 0 so the gauge
+ * reads as a real zero rather than being absent.
+ */
+async function overdueCountByTenant(now = new Date()) {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT tenant_id, action, frequency, grace_days, created_at
+     FROM schedules WHERE active = true`
+  );
+  if (!rows.length) return new Map();
+
+  // Same batched last-event fetch shape as listWithStatus, across tenants:
+  // one grouped scan instead of a correlated subquery per schedule.
+  const { rows: lastRows } = await pool.query(
+    `SELECT tenant_id, action, MAX(occurred_at) AS last_at
+     FROM events
+     WHERE (tenant_id, action) IN (SELECT tenant_id, action FROM schedules WHERE active = true)
+     GROUP BY tenant_id, action`
+  );
+  const lastByKey = new Map(lastRows.map(r => [`${r.tenant_id}:${r.action}`, r.last_at]));
+
+  const counts = new Map();
+  for (const row of rows) {
+    const lastAt = lastByKey.get(`${row.tenant_id}:${row.action}`) || null;
+    const { status } = scheduleStatus(row, lastAt, now);
+    counts.set(row.tenant_id, (counts.get(row.tenant_id) || 0) + (status === 'overdue' ? 1 : 0));
+  }
+  return counts;
+}
+
+module.exports = { FREQUENCIES, nextDue, scheduleStatus, listWithStatus, rowToSchedule, overdueCountByTenant };

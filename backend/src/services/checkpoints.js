@@ -5,6 +5,7 @@ const { randomUUID } = require('crypto');
 const { getPool } = require('../database');
 const { canonicalize } = require('../canonical');
 const logger = require('../logger');
+const metrics = require('../metrics');
 
 const KEY_DIR = process.env.KEY_DIR || path.join(__dirname, '../../data/keys');
 const PRIVATE_KEY_PATH = path.join(KEY_DIR, 'checkpoint-ed25519.pem');
@@ -71,6 +72,7 @@ async function createCheckpoint(tenantId) {
       signature, publicKeyPem, checkpoint.signed_at]
   );
 
+  metrics.recordCheckpointSigned(tenantId);
   logger.info({ tenantId, sequence: checkpoint.sequence }, 'Checkpoint created');
   return { ...checkpoint, signature, public_key: publicKeyPem };
 }

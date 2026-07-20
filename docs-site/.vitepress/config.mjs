@@ -65,6 +65,7 @@ export default defineConfig({
             { text: 'External anchoring', link: '/operations/anchoring' },
             { text: 'Integrations', link: '/operations/integrations' },
             { text: 'Retention', link: '/operations/retention' },
+            { text: 'Multi-tenant mode', link: '/operations/multi-tenant' },
             { text: 'Backup & restore', link: '/operations/backup' }
           ]
         }

@@ -64,6 +64,7 @@ export default defineConfig({
             { text: 'Users & authentication', link: '/operations/authentication' },
             { text: 'External anchoring', link: '/operations/anchoring' },
             { text: 'Integrations', link: '/operations/integrations' },
+            { text: 'Monitoring', link: '/operations/monitoring' },
             { text: 'Retention', link: '/operations/retention' },
             { text: 'Backup & restore', link: '/operations/backup' }
           ]

@@ -63,6 +63,13 @@ All configuration is environment variables. With Docker Compose, set them in
 | `EVIDENCE_DIR` | `<backend>/data/evidence` | Content-addressed file storage |
 | `MAX_EVIDENCE_BYTES` | `26214400` (25 MB) | Max upload size |
 
+## Metrics
+
+| Variable | Default | Description |
+|---|---|---|
+| `METRICS_ENABLED` | `false` | Expose Prometheus metrics at `GET /metrics` — see [Monitoring](/operations/monitoring) for exposure considerations |
+| `METRICS_TOKEN` | *(unset)* | When set, `/metrics` requires `Authorization: Bearer <token>` |
+
 ## Rate limiting & logging
 
 | Variable | Default | Description |

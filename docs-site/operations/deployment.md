@@ -60,6 +60,40 @@ verification memory stays flat regardless of history size.
 docker compose pull && docker compose up -d
 ```
 
-The schema is created idempotently at startup (`CREATE TABLE IF NOT
-EXISTS`); new tables and triggers appear automatically. The events table is
-append-only, so upgrades never rewrite history.
+Schema changes ship as versioned migrations and are applied automatically
+at startup; the events table is append-only, so upgrades never rewrite
+history. Still, take a Postgres backup before upgrading — migrations only
+move forward, and a backup is the rollback path.
+
+### Database migrations
+
+The schema lives in numbered SQL files under `backend/migrations/`
+(`001_initial.sql`, `002_v0_2_0_features.sql`, ...). At startup the backend:
+
+1. Creates a `schema_migrations` bookkeeping table (`version`, `name`,
+   `applied_at`) if it does not exist.
+2. Takes a Postgres advisory lock so that several instances booting against
+   the same database never race each other.
+3. Applies every migration file whose version is not yet recorded, in
+   order, each inside its own transaction. A failed migration rolls back
+   completely and aborts startup — the database is never left half-migrated.
+
+No manual step is required: starting the new version migrates the database.
+You can audit what has been applied at any time:
+
+```sql
+SELECT version, name, applied_at FROM schema_migrations ORDER BY version;
+```
+
+**Upgrading an install that predates the migration framework** (releases up
+to v0.2.0 bootstrapped the schema with idempotent DDL at boot): this is
+detected automatically. On first boot the runner sees an existing schema
+with no migration history, records `001_initial.sql` as already applied
+without re-running it, and then applies only the newer migrations. The
+second and subsequent boots are ordinary no-ops.
+
+If you use the restricted database role from the production checklist,
+run migrations with the owning role: start the backend once with the owner
+`DATABASE_URL` after upgrading (or keep the owner role in `DATABASE_URL`
+and rely on the restricted role only for ad-hoc access), then re-run
+`harden-db-role.js` so grants cover any new tables.

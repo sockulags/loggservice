@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { getPool, getDefaultTenantId } = require('../database');
+const { getPool } = require('../database');
 const { requireRole } = require('../middleware/session');
 const { generateApiKey, hashKey } = require('../middleware/apikey');
 const logger = require('../logger');
@@ -33,9 +33,11 @@ router.post('/', async (req, res) => {
 
     const key = generateApiKey();
     const id = crypto.randomUUID();
+    // The key is created in the acting admin's tenant (identical to the
+    // default tenant on single-tenant installs) — never in any other.
     await getPool().query(
       'INSERT INTO api_keys (id, tenant_id, name, key_hash, prefix) VALUES ($1, $2, $3, $4, $5)',
-      [id, getDefaultTenantId(), name, hashKey(key), key.slice(0, 16)]
+      [id, req.user.tenant_id, name, hashKey(key), key.slice(0, 16)]
     );
     res.status(201).json({ id, name, key });
   } catch (error) {

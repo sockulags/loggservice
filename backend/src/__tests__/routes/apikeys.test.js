@@ -52,6 +52,15 @@ describe('api key routes', () => {
     expect(storedHash).not.toContain(res.body.key);
   });
 
+  test('creates the key in the acting admin\'s tenant, never the default tenant', async () => {
+    const TENANT_B = 'bbbbbbbb-0000-0000-0000-000000000002';
+    const otherAdmin = { id: 'admin-2', email: 'b@acme.example', role: 'admin', tenant_id: TENANT_B };
+    const res = await request(appAs(otherAdmin)).post('/api/keys').send({ name: 'acme-bot' });
+    expect(res.status).toBe(201);
+    const [, params] = mockPoolQuery.mock.calls[0];
+    expect(params[1]).toBe(TENANT_B);
+  });
+
   test('rejects creation without a name', async () => {
     expect((await request(appAs(admin)).post('/api/keys').send({})).status).toBe(400);
   });

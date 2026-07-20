@@ -10,4 +10,7 @@ data
 eslint.config.js
 jest.config.js
 __tests__
+# scripts stay out of the shipped image on purpose: they can create admins
+# (create-admin, bootstrap-demo) and seed or prune chain data. Run them from
+# a checkout; the demo compose bind-mounts them into its one-shot bootstrap.
 scripts

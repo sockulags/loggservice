@@ -17,6 +17,10 @@ FROM base AS production
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --chown=nodejs:nodejs . .
 
+# Pre-create the data mountpoint so a named volume mounted at /app/data is
+# initialized with nodejs ownership (keys + evidence are written there)
+RUN mkdir -p data/keys data/evidence && chown -R nodejs:nodejs data
+
 # Switch to non-root user
 USER nodejs
 

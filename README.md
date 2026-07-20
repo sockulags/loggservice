@@ -85,6 +85,31 @@ flowchart LR
   expose what should have been recorded but wasn't. Changes to the schedule
   are themselves chain events.
 
+## Try it in 2 minutes (demo mode)
+
+No configuration, no `.env`, nothing to decide:
+
+```bash
+git clone https://github.com/sockulags/clomp.git
+cd clomp
+docker compose -f docker-compose.demo.yml up -d
+```
+
+That's it. Open **http://localhost:8080** and log in as **`demo@clomp.local`**
+with password **`clomp-demo`**. The demo starts pre-loaded with ~6 months of
+realistic security activity, four scheduled controls (one deliberately
+overdue) and a signed checkpoint — so the ledger, schedules, verify and
+export views all have something to show immediately.
+
+From there, hit **Verify** to recompute the whole hash chain, or grab the
+JSONL export and check it offline with
+`node backend/scripts/verify-export.js clomp-export.jsonl`.
+
+> **DEMO MODE — not for production.** The database password and admin
+> credentials are hardcoded and public. Tear it all down with
+> `docker compose -f docker-compose.demo.yml down -v`, then follow the
+> quick start below for a real installation.
+
 ## Quick start (Docker)
 
 ```bash
